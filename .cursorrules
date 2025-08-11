@@ -1,0 +1,46 @@
+Project: ESP32 Autonomous Rover & Control Station App
+Last-Updated: 2025-08-11
+
+Summary
+- Embedded: ESP32 (Arduino, FreeRTOS). Modular tasks: WiFi, GPS, IMU, Navigation, Telemetry. Shared state via `core/SharedData` with mutexes. HAL via `hardware/MotorController` and `hardware/SensorManager`.
+- Desktop: Python (PyQt5, PyQtWebEngine). Modules: `core/`, `gui/`, `network/`, `mission/`, `utils/`, map in `assets/map.html`. Mission planning and progress UI are implemented in `gui/main_window.py` with a consolidated workflow.
+- Comms: JSON over TCP (default port 80). App sends waypoints/mission commands; rover streams telemetry.
+
+Critical implementation paths
+- ESP32
+  - Entry: `src/main.cpp` (task creation, WiFi setup, watchdog)
+  - Tasks: headers in `include/tasks/*.h`, impl in `src/tasks/*.cpp`
+  - Shared data: `include/core/SharedData.h`, `src/core/SharedData.cpp`
+  - HAL: `include/hardware/*.h`, `src/hardware/*.cpp`
+- Desktop app
+  - App bootstrap: `CONTROL_STATION_APP/main.py` (`RoverControlApplication`)
+  - Coordinator/UI: `CONTROL_STATION_APP/gui/main_window.py`
+  - Services/Models: `CONTROL_STATION_APP/core/services.py`, `CONTROL_STATION_APP/core/models.py`
+  - Networking: `CONTROL_STATION_APP/network/client.py`, `CONTROL_STATION_APP/network/telemetry.py`
+  - Mission logic: `CONTROL_STATION_APP/mission/*.py`
+  - Map/UI assets: `CONTROL_STATION_APP/assets/map.html`, styles in `CONTROL_STATION_APP/gui/styles.py`
+
+User preferences and patterns
+- Favor modular design with clear `.h/.cpp` separation on ESP32.
+- Maintain clean separation of concerns across app modules (GUI, network, mission, utils).
+- Professional, compact UI with clear mission workflow sections.
+
+Known mismatches / caveats
+- `CONTROL_STATION_APP/README.md` shows an older flat layout (`main_window.py`, `communication.py` in root). The actual structure is modular under `core/`, `gui/`, `network/`, `mission/`, `utils/`.
+- Docs reference `CONTROL_STATION_APP/sim_rover.py`, but this file is not present in the current tree. If needed, add a simulator in the future or adjust docs.
+- Memory-bank mentions a `.taskmaster/` folder; not present. Ignore unless we adopt Task Master locally.
+
+Operational notes
+- Build firmware with PlatformIO (`platformio.ini` configured for esp32doit-devkit-v1).
+- Python app deps in `CONTROL_STATION_APP/requirements.txt` (PyQt5, PyQtWebEngine). Run via `python CONTROL_STATION_APP/main.py`.
+- Network default port (ESP32 TCP server): 80. Ensure firewall allows traffic on Windows.
+
+When updating the project
+- After significant code/UI changes, update `memory-bank/activeContext.md` and `memory-bank/progress.md` with current focus and status.
+- Keep this `.cursorrules` in sync with any structural or protocol changes (e.g., mission JSON fields, task names, directory moves).
+
+Future helpful additions
+- Add a lightweight TCP simulator (`sim_rover.py`) to mirror telemetry and mission commands for offline testing.
+- Align README with the current app structure and mission workflow.
+
+
