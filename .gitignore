@@ -1,4 +1,7 @@
 .cursor
+.cursorrules
+.cursor/rules
+.taskmaster
 .pio
 .vscode/.browse.c_cpp.db*
 .vscode/c_cpp_properties.json
@@ -27,6 +30,6 @@ node_modules/
 # OS specific
 .DS_Store
 
-# Task files
-tasks.json
-tasks/ 
+INTEGRATION_SUMMARY.md
+memory-bank
+
