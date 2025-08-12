@@ -1,3 +1,12 @@
+## Project Progress Log
+
+Last Updated: 2025-08-12
+
+### 2025-08-12
+- **Init**: Created `memory-bank/activeContext.md` seeded from [.cursorrules](mdc:.cursorrules).
+- **Init**: Created `memory-bank/progress.md` to track future updates.
+- **Next**: Keep `activeContext.md` in sync after significant changes; consider adding a TCP simulator (`sim_rover.py`); align `CONTROL_STATION_APP/README.md` with current structure.
+
 # Progress: ESP32 Autonomous Rover & Control Station App
 
 ## What Works
