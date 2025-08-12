@@ -144,33 +144,9 @@ class RoverState:
 
 @dataclass
 class AppConfig:
-    """Application configuration settings."""
-    # Connection settings
-    default_rover_ip: str = "192.168.1.100"
-    default_rover_port: int = 80
-    connection_timeout: int = 5
-    reconnect_attempts: int = 3
-    
-    # Map settings
-    default_map_center_lat: float = 37.7749
-    default_map_center_lng: float = -122.4194
-    default_map_zoom: int = 13
+    """Deprecated: retained minimal fields for compatibility; ConfigManager is the source of truth."""
+    # Map settings used in code; values overridden by ConfigManager when available
     max_waypoints: int = 10
-    
-    # Telemetry settings
-    telemetry_update_interval: int = 1000  # milliseconds
-    telemetry_timeout: int = 5  # seconds
-    
-    # GUI settings
-    window_width: int = 1400
-    window_height: int = 900
-    remember_window_state: bool = True
-    theme: str = "default"
-    
-    # Logging settings
-    log_level: str = "INFO"
-    log_to_file: bool = False
-    log_file_path: str = "rover_control.log"
 
 
 class AppState(QObject):

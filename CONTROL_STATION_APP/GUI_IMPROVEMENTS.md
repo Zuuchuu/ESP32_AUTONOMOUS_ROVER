@@ -1,7 +1,6 @@
-# GUI Layout Improvements - ESP32 Rover Control Station
+# GUI Layout Notes - ESP32 Rover Control Station
 
-## Overview
-The GUI has been redesigned to eliminate overlapping issues and improve user experience through a modern tabbed interface design.
+This document previously described a tabbed interface. The current implementation uses a splitter layout with vertical workflow sections (waypoint management, mission setup, mission control, mission progress) and top status bars for connection/sensors. Tab-specific references are outdated and have been removed from code.
 
 ## Key Improvements
 

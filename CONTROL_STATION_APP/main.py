@@ -70,8 +70,8 @@ class RoverControlApplication:
             self.network_client = RoverClient()
             self.logger.info("Network client initialized")
             
-            # Initialize application service
-            self.app_service = ApplicationService()
+            # Initialize application service with configuration
+            self.app_service = ApplicationService(self.config_manager)
             self.app_service.set_network_client(self.network_client)
             self.logger.info("Application service initialized")
             
