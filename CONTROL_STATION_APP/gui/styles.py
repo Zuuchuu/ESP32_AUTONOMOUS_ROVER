@@ -68,7 +68,46 @@ class StyleManager(QObject):
             color: #666666;
         }
         
-        /* Legacy special button objectName styles removed */
+        /* Special Button Types */
+        QPushButton#connectButton {
+            background-color: #2196F3;
+        }
+        
+        QPushButton#connectButton:hover {
+            background-color: #1976D2;
+        }
+        
+        QPushButton#connectButton:pressed {
+            background-color: #1565C0;
+        }
+        
+        QPushButton#disconnectButton {
+            background-color: #f44336;
+        }
+        
+        QPushButton#disconnectButton:hover {
+            background-color: #d32f2f;
+        }
+        
+        QPushButton#startButton {
+            background-color: #4CAF50;
+        }
+        
+        QPushButton#stopButton {
+            background-color: #FF9800;
+        }
+        
+        QPushButton#stopButton:hover {
+            background-color: #F57C00;
+        }
+        
+        QPushButton#clearButton {
+            background-color: #9E9E9E;
+        }
+        
+        QPushButton#clearButton:hover {
+            background-color: #757575;
+        }
         
         /* Input Field Styling */
         QLineEdit {
@@ -173,7 +212,35 @@ class StyleManager(QObject):
             background-color: #bbb;
         }
         
-        /* Tab styles removed (no QTabWidget in current UI) */
+        /* Tab Widget Styling */
+        QTabWidget::pane {
+            border: 1px solid #ddd;
+            background-color: white;
+            border-radius: 6px;
+        }
+        
+        QTabBar::tab {
+            background: #f5f5f5;
+            color: #333333;
+            padding: 10px 20px;
+            margin-right: 2px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            min-width: 120px;
+            min-height: 30px;
+        }
+        
+        QTabBar::tab:selected {
+            background: white;
+            color: #2196F3;
+            border-bottom: 2px solid #2196F3;
+        }
+        
+        QTabBar::tab:hover {
+            background: #e8f4fd;
+        }
         
         /* Scroll Area Styling */
         QScrollArea {
@@ -198,7 +265,38 @@ class StyleManager(QObject):
         }
         
         /* Mission Control Panel Specific Styles */
-        /* Legacy mission button styles removed (not used) */
+        QPushButton#planButton {
+            background-color: #17a2b8;
+        }
+        
+        QPushButton#planButton:hover {
+            background-color: #138496;
+        }
+        
+        QPushButton#startMissionButton {
+            background-color: #28a745;
+        }
+        
+        QPushButton#startMissionButton:hover {
+            background-color: #1e7e34;
+        }
+        
+        QPushButton#pauseMissionButton {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        QPushButton#pauseMissionButton:hover {
+            background-color: #e0a800;
+        }
+        
+        QPushButton#abortButton {
+            background-color: #dc3545;
+        }
+        
+        QPushButton#abortButton:hover {
+            background-color: #c82333;
+        }
         """
     
     def get_connection_status_style(self, connected: bool) -> str:

@@ -8,7 +8,7 @@ hub for all GUI interactions.
 
 from typing import List
 from PyQt5.QtWidgets import (QMainWindow, QSplitter, QVBoxLayout, 
-                             QWidget, QMessageBox, QMenuBar, QStatusBar,
+                             QWidget, QMessageBox, QMenuBar, QStatusBar, QScrollArea,
                               QLabel, QFrame, QGridLayout, QHBoxLayout, QPushButton, QCheckBox, QDoubleSpinBox, QSlider, QSizePolicy,
                               QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QAbstractItemView)
 from PyQt5.QtCore import Qt, QTimer
@@ -17,7 +17,7 @@ from PyQt5.QtGui import QIcon, QFont
 from core.services import ApplicationService
 from core.models import ConnectionState, NavigationState, MissionPlan, MissionProgress, MissionAnalytics, Waypoint, TelemetryData
 from mission.planner import MissionPlanner
-from .panels import MapWidget
+from .panels import ConnectionPanel, WaypointPanel, TelemetryPanel, MapWidget
 from .styles import StyleManager
 
 
@@ -116,7 +116,11 @@ class MainWindow(QMainWindow):
     
     def create_panels(self):
         """Create all GUI panels."""
-        # Only the map widget is required for the current UI layout
+        self.connection_panel = ConnectionPanel()
+        self.waypoint_panel = WaypointPanel()
+
+        self.telemetry_panel = TelemetryPanel()
+
         self.map_widget = MapWidget()
     
     def create_control_container(self) -> QWidget:
@@ -969,9 +973,105 @@ class MainWindow(QMainWindow):
             # Reset to planning state
             pass  # Mission status now shown in progress section
     
-    # Legacy integrated mission tab removed
+    def create_integrated_mission_tab(self) -> QWidget:
+        """Create integrated mission tab with complete workflow (Option A - Vertical Sections)."""
+        tab = QWidget()
+        
+        # Use scroll area for the entire mission workflow
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Create content widget for scrolling
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setSpacing(6)
+        content_layout.setContentsMargins(6, 6, 6, 6)
+        
+        # Professional Mission Workflow Sections
+        
+        # 1. WAYPOINT MANAGEMENT SECTION (no duplicate header - use panel's own title)
+        content_layout.addWidget(self.waypoint_panel)
+        
+        # 2. MISSION PLANNING SECTION  
+        planning_header = QLabel("📋 MISSION PLANNING")
+        planning_header.setStyleSheet("""
+            font-weight: bold; 
+            font-size: 11px; 
+            color: #2980b9; 
+            background-color: #ebf3fd; 
+            padding: 6px; 
+            border-radius: 3px; 
+            margin: 1px;
+        """)
+        content_layout.addWidget(planning_header)
+        
+        self.mission_planning_panel = self.create_mission_planning_section()
+        content_layout.addWidget(self.mission_planning_panel)
+        
+        # 3. MISSION EXECUTION SECTION
+        execution_header = QLabel("🚀 MISSION EXECUTION")
+        execution_header.setStyleSheet("""
+            font-weight: bold; 
+            font-size: 11px; 
+            color: #27ae60; 
+            background-color: #eafaf1; 
+            padding: 6px; 
+            border-radius: 3px; 
+            margin: 1px;
+        """)
+        content_layout.addWidget(execution_header)
+        
+        self.mission_execution_panel = self.create_mission_execution_section()
+        content_layout.addWidget(self.mission_execution_panel)
+        
+        # 4. PROGRESS MONITORING SECTION
+        monitoring_header = QLabel("📊 PROGRESS MONITORING")
+        monitoring_header.setStyleSheet("""
+            font-weight: bold; 
+            font-size: 11px; 
+            color: #e67e22; 
+            background-color: #fef9e7; 
+            padding: 6px; 
+            border-radius: 3px; 
+            margin: 1px;
+        """)
+        content_layout.addWidget(monitoring_header)
+        
+        self.mission_monitoring_panel = self.create_mission_monitoring_section()
+        content_layout.addWidget(self.mission_monitoring_panel)
+        
+
+        
+        # Add stretch to ensure proper spacing
+        content_layout.addStretch()
+        
+        content_widget.setLayout(content_layout)
+        scroll_area.setWidget(content_widget)
+        
+        # Main tab layout
+        tab_layout = QVBoxLayout()
+        tab_layout.addWidget(scroll_area)
+        
+        tab.setLayout(tab_layout)
+        return tab
     
-    # Legacy status tab removed
+    def create_status_tab(self) -> QWidget:
+        """Create status tab with telemetry and system information."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        
+        # Add telemetry panel
+        layout.addWidget(self.telemetry_panel)
+        
+        # Add stretch to push content to top
+        layout.addStretch()
+        
+        tab.setLayout(layout)
+        return tab
     
     def create_mission_planning_section(self) -> QWidget:
         """Create mission planning section with optimization and statistics."""
@@ -1275,7 +1375,7 @@ class MainWindow(QMainWindow):
         # Connect action
         self.connect_action = conn_menu.addAction('&Connect')
         self.connect_action.setShortcut('Ctrl+C')
-        self.connect_action.triggered.connect(self.on_connect_disconnect_requested)
+        self.connect_action.triggered.connect(self.connection_panel.toggle_connection)
         
         # Disconnect action
         self.disconnect_action = conn_menu.addAction('&Disconnect')
@@ -1307,7 +1407,17 @@ class MainWindow(QMainWindow):
     
     def connect_signals(self):
         """Connect all signals between components."""
-        # Connect compact waypoint panel through MainWindow handlers only
+        # Connect panel signals to application service
+        self.connection_panel.connect_requested.connect(self.app_service.connect_to_rover)
+        self.connection_panel.disconnect_requested.connect(self.app_service.disconnect_from_rover)
+        
+        self.waypoint_panel.waypoint_added_manual.connect(self.app_service.add_waypoint_manual)
+        self.waypoint_panel.waypoints_cleared.connect(self.app_service.clear_waypoints)
+        self.waypoint_panel.remove_selected_requested.connect(self.app_service.remove_selected_waypoints)
+
+        
+
+        
         # Connect new mission control signals
         self.setup_plan_btn.clicked.connect(self.on_mission_plan_requested)
         self.control_start_btn.clicked.connect(self.on_mission_start_requested)
@@ -1383,7 +1493,9 @@ class MainWindow(QMainWindow):
         # Update all panels
         connected = (state == ConnectionState.CONNECTED)
         
-        # No external panels to update; top bars reflect state
+        self.connection_panel.update_connection_state(state, 
+                                                    self.app_service.app_state.rover_state.error_message)
+        self.waypoint_panel.set_connection_state(connected)
 
         # Update top connectivity bar
         self.update_connect_status_bar(state)
@@ -1404,7 +1516,10 @@ class MainWindow(QMainWindow):
     
     def on_navigation_state_changed(self, state: NavigationState):
         """Handle navigation state changes."""
-        # Legacy navigation state handling removed
+        # Legacy navigation state handling - now handled by mission controls
+        
+        # Update menu actions
+        running = (state == NavigationState.RUNNING)
 
         
         # Update status
@@ -1418,7 +1533,7 @@ class MainWindow(QMainWindow):
     
     def on_telemetry_updated(self, telemetry):
         """Handle telemetry updates."""
-        # Update map and status bars
+        self.telemetry_panel.update_telemetry(telemetry)
         self.map_widget.update_rover_position(telemetry)
         self.update_sensors_status_bar(telemetry)
         
@@ -1429,12 +1544,21 @@ class MainWindow(QMainWindow):
     
     def on_waypoints_changed(self, waypoints):
         """Handle waypoint list changes."""
+        self.waypoint_panel.update_waypoints(waypoints)
+        
         # Update compact waypoint table
         self.update_compact_waypoint_table(waypoints)
         
-        # Update setup section button state
-        waypoint_count = len(waypoints)
-        self.setup_plan_btn.setEnabled(waypoint_count >= 2)
+        # Update legacy mission planning section if it exists
+        if hasattr(self, 'plan_mission_btn'):
+            waypoint_count = len(waypoints)
+            self.plan_mission_btn.setEnabled(waypoint_count >= 2)
+            
+            if hasattr(self, 'mission_stats_display'):
+                if waypoint_count < 2:
+                    self.mission_stats_display.setText(f"Add {2 - waypoint_count} more waypoint(s) to plan mission")
+                else:
+                    self.mission_stats_display.setText(f"{waypoint_count} waypoints ready for mission planning")
         
         # Update map waypoints programmatically when list shrinks or clears.
         # Suppress map monitoring to avoid re-adding via map callbacks.
@@ -1861,9 +1985,13 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
             self.control_abort_btn.setEnabled(False)
             self.control_clear_btn.setEnabled(False)
         
-        # Reset displays
+        # Reset legacy displays if they exist
+        if hasattr(self, 'mission_stats_display'):
+            self.mission_stats_display.setText("Add waypoints to plan mission")
+        if hasattr(self, 'mission_progress_display'):
+            self.mission_progress_display.setText("No active mission")
         
-        # Reset metrics
+        # Reset legacy metrics if they exist
         if hasattr(self, 'eta_label'):
             self.eta_label.setText("ETA: --")
         if hasattr(self, 'completion_label'):
@@ -1871,7 +1999,9 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
         if hasattr(self, 'cte_label'):
             self.cte_label.setText("CTE: 0.0m")
         
-        # Reset button states
+        # Reset legacy button states if they exist
+        if hasattr(self, 'plan_mission_btn'):
+            self.plan_mission_btn.setEnabled(False)
         if hasattr(self, 'start_mission_btn'):
             self.start_mission_btn.setText("Start Mission")
             self.start_mission_btn.setEnabled(False)

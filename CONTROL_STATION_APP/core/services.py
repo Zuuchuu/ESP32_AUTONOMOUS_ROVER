@@ -14,13 +14,6 @@ from .models import (AppState, ConnectionState, NavigationState,
                     Waypoint, TelemetryData, AppConfig)
 
 
-try:
-    # Optional import for type hints; avoids hard dependency issues
-    from utils.config import ConfigManager  # type: ignore
-except Exception:  # pragma: no cover
-    ConfigManager = None  # type: ignore
-
-
 class ApplicationService(QObject):
     """
     Main application service that coordinates all business logic.
@@ -33,16 +26,12 @@ class ApplicationService(QObject):
     status_message = pyqtSignal(str)
     operation_completed = pyqtSignal(str, bool)  # operation, success
     
-    def __init__(self, config_manager: Optional['ConfigManager'] = None):
+    def __init__(self):
         super().__init__()
         self.app_state = AppState()
-        self.config_manager = config_manager
         self.network_client = None  # Will be injected by main application
         self.logger = self._setup_logging()
         
-        # Apply configuration into application state if available
-        self._apply_configuration()
-
         # Connection monitoring timer
         self.connection_monitor = QTimer()
         self.connection_monitor.timeout.connect(self._monitor_connection)
@@ -50,20 +39,6 @@ class ApplicationService(QObject):
         
         # Connect to app state signals
         self._connect_state_signals()
-
-    def _apply_configuration(self):
-        """Apply configuration values from ConfigManager into AppState."""
-        try:
-            if self.config_manager is None:
-                return
-            # Max waypoints
-            max_wps = self.config_manager.get("map.max_waypoints", None)
-            if isinstance(max_wps, int) and max_wps > 0:
-                self.app_state._config.max_waypoints = max_wps
-            # Future: map defaults, telemetry intervals, etc.
-        except Exception:
-            # Non-fatal if configuration is unavailable
-            pass
     
     def _setup_logging(self) -> logging.Logger:
         """Set up application logging."""

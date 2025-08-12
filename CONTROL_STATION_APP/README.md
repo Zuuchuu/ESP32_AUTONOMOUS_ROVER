@@ -1,6 +1,6 @@
-# ESP32 Rover Control Station (Modular)
+# ESP32 Rover Control Station Application
 
-Windows desktop application for controlling and monitoring an ESP32-based autonomous rover. Built with Python 3.8+ and PyQt5, featuring an interactive map interface and real-time telemetry display.
+A Windows desktop application for controlling and monitoring an ESP32-based autonomous rover. Built with Python 3.8+ and PyQt5, featuring an interactive map interface and real-time telemetry display.
 
 ## Features
 
@@ -151,35 +151,17 @@ The application communicates with the ESP32 rover using TCP sockets on port 80 w
 - **Firewall issues**: Ensure Windows Firewall allows Python/PyQt5 network access
 - **Router settings**: Check that router allows communication between devices
 
-## File Structure (current)
+## File Structure
 
 ```
 CONTROL_STATION_APP/
-├── main.py                     # Application entry point
-├── core/
-│   ├── models.py               # Data models and application state
-│   └── services.py             # ApplicationService (business logic)
-├── gui/
-│   ├── main_window.py          # Main window and workflow sections
-│   ├── panels.py               # Map widget and modular panels
-│   └── styles.py               # Styling/theming
-├── mission/
-│   ├── planner.py              # Mission planning and progress
-│   ├── algorithms.py           # Path planning/optimizer helpers
-│   ├── path_optimizer.py       # Path smoothing and constraints
-│   ├── trajectory.py           # Trajectory utilities
-│   └── visualizer.py           # JS generation for map overlays
-├── network/
-│   ├── client.py               # TCP client and command API
-│   └── telemetry.py            # Telemetry background processor
-├── utils/
-│   ├── config.py               # JSON configuration manager
-│   └── helpers.py              # Math/GPS utilities
-├── assets/
-│   └── map.html                # Leaflet map
-├── config.json                 # App configuration
-├── requirements.txt            # Python dependencies
-└── README.md                   # This documentation
+├── main.py              # Application entry point
+├── main_window.py       # Main GUI window and controls
+├── communication.py     # TCP communication and threading
+├── utils.py            # Utility functions and validation
+├── map.html           # Leaflet.js interactive map
+├── requirements.txt   # Python dependencies
+└── README.md         # This documentation
 ```
 
 ## Development Notes
@@ -201,10 +183,10 @@ CONTROL_STATION_APP/
 ## Support
 
 For issues related to:
-- **ESP32 firmware**: See project-level `ESP32_Rover.md`
+- **ESP32 firmware**: Refer to ESP32_Rover.markdown documentation
 - **Hardware setup**: Check wiring and component specifications
 - **Application bugs**: Review error messages and check Python/PyQt5 versions
-- **Network configuration**: Ensure Windows Firewall allows Python; rover TCP on port 80
+- **Network configuration**: Consult router documentation and network tools
 
 ## License
 
