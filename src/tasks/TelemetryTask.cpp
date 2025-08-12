@@ -93,7 +93,7 @@ void TelemetryTask::buildTelemetryData() {
     // Get GPS position data
     GPSPosition currentPosition;
     if (sharedData.getPosition(currentPosition)) {
-        JsonObject position = telemetryDoc.createNestedObject("position");
+        JsonObject position = telemetryDoc["position"].to<JsonObject>();
         position["latitude"] = currentPosition.latitude;
         position["longitude"] = currentPosition.longitude;
         position["isValid"] = currentPosition.isValid;
@@ -103,26 +103,26 @@ void TelemetryTask::buildTelemetryData() {
     // Get IMU data
     IMUData currentIMUData;
     if (sharedData.getIMUData(currentIMUData)) {
-        JsonObject imu = telemetryDoc.createNestedObject("imu");
+        JsonObject imu = telemetryDoc["imu"].to<JsonObject>();
         imu["heading"] = currentIMUData.heading;
         imu["temperature"] = currentIMUData.temperature;
         imu["isValid"] = currentIMUData.isValid;
         imu["timestamp"] = currentIMUData.timestamp;
         
         // Add acceleration data
-        JsonArray acceleration = imu.createNestedArray("acceleration");
+        JsonArray acceleration = imu["acceleration"].to<JsonArray>();
         acceleration.add(currentIMUData.acceleration[0]);
         acceleration.add(currentIMUData.acceleration[1]);
         acceleration.add(currentIMUData.acceleration[2]);
         
         // Add gyroscope data
-        JsonArray gyroscope = imu.createNestedArray("gyroscope");
+        JsonArray gyroscope = imu["gyroscope"].to<JsonArray>();
         gyroscope.add(currentIMUData.gyroscope[0]);
         gyroscope.add(currentIMUData.gyroscope[1]);
         gyroscope.add(currentIMUData.gyroscope[2]);
         
         // Add magnetometer data
-        JsonArray magnetometer = imu.createNestedArray("magnetometer");
+        JsonArray magnetometer = imu["magnetometer"].to<JsonArray>();
         magnetometer.add(currentIMUData.magnetometer[0]);
         magnetometer.add(currentIMUData.magnetometer[1]);
         magnetometer.add(currentIMUData.magnetometer[2]);
@@ -131,7 +131,7 @@ void TelemetryTask::buildTelemetryData() {
     // Get rover state
     RoverState roverState;
     if (sharedData.getRoverState(roverState)) {
-        JsonObject state = telemetryDoc.createNestedObject("rover");
+        JsonObject state = telemetryDoc["rover"].to<JsonObject>();
         state["isNavigating"] = roverState.isNavigating;
         state["isConnected"] = roverState.isConnected;
         state["currentWaypointIndex"] = roverState.currentWaypointIndex;
@@ -153,7 +153,7 @@ void TelemetryTask::buildTelemetryData() {
     // Get system status
     SystemStatus systemStatus;
     if (sharedData.getSystemStatus(systemStatus)) {
-        JsonObject status = telemetryDoc.createNestedObject("system");
+        JsonObject status = telemetryDoc["system"].to<JsonObject>();
         status["wifiConnected"] = systemStatus.wifiConnected;
         status["gpsFix"] = systemStatus.gpsFix;
         status["imuCalibrated"] = systemStatus.imuCalibrated;
@@ -163,7 +163,7 @@ void TelemetryTask::buildTelemetryData() {
     }
     
     // Add WiFi information
-    JsonObject wifi = telemetryDoc.createNestedObject("wifi");
+    JsonObject wifi = telemetryDoc["wifi"].to<JsonObject>();
     wifi["connected"] = WiFi.status() == WL_CONNECTED;
     wifi["ssid"] = WiFi.SSID();
     wifi["rssi"] = WiFi.RSSI();
@@ -172,11 +172,11 @@ void TelemetryTask::buildTelemetryData() {
     // Add waypoints information
     int waypointCount = sharedData.getWaypointCount();
     if (waypointCount > 0) {
-        JsonArray waypoints = telemetryDoc.createNestedArray("waypoints");
+        JsonArray waypoints = telemetryDoc["waypoints"].to<JsonArray>();
         for (int i = 0; i < waypointCount; i++) {
             Waypoint waypoint;
             if (sharedData.getWaypoint(i, waypoint)) {
-                JsonObject wp = waypoints.createNestedObject();
+                JsonObject wp = waypoints.add<JsonObject>();
                 wp["index"] = i;
                 wp["latitude"] = waypoint.latitude;
                 wp["longitude"] = waypoint.longitude;
@@ -187,13 +187,13 @@ void TelemetryTask::buildTelemetryData() {
 
     // Mission info summary
     {
-        JsonObject mission = telemetryDoc.createNestedObject("mission");
+        JsonObject mission = telemetryDoc["mission"].to<JsonObject>();
         mission["id"] = sharedData.getMissionId();
         mission["state"] = (int)sharedData.getMissionState();
         mission["segmentCount"] = sharedData.getPathSegmentCount();
         // Parameters snapshot
         MissionParameters mp = sharedData.getMissionParameters();
-        JsonObject params = mission.createNestedObject("parameters");
+        JsonObject params = mission["parameters"].to<JsonObject>();
         params["speed_mps"] = mp.speed_mps;
         params["cte_threshold_m"] = mp.cte_threshold_m;
         params["mission_timeout_s"] = mp.mission_timeout_s;
@@ -202,7 +202,7 @@ void TelemetryTask::buildTelemetryData() {
     }
     
     // Add memory information
-    JsonObject memory = telemetryDoc.createNestedObject("memory");
+    JsonObject memory = telemetryDoc["memory"].to<JsonObject>();
     memory["freeHeap"] = ESP.getFreeHeap();
     memory["minFreeHeap"] = ESP.getMinFreeHeap();
     memory["maxAllocHeap"] = ESP.getMaxAllocHeap();

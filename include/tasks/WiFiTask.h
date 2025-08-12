@@ -16,8 +16,8 @@ private:
     WiFiServer server;
     WiFiClient client;
     bool clientConnected;
-    // Increase capacity to handle full mission payloads
-    StaticJsonDocument<8192> jsonDoc;
+    // JSON document for command parsing (ArduinoJson v7)
+    JsonDocument jsonDoc;
     
     // Command processing
     void processCommand(const String& command);

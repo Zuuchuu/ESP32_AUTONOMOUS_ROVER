@@ -41,7 +41,7 @@
 // NAVIGATION CONFIGURATION
 // ============================================================================
 
-#define WAYPOINT_THRESHOLD       2.0    // meters
+#define WAYPOINT_THRESHOLD       0.3    // meters
 #define BASE_SPEED               100    // PWM 0-255
 #define K_XTE                    10.0   // degrees per meter
 #define KP                       0.5    // PID proportional gain

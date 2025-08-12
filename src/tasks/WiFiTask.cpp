@@ -92,8 +92,8 @@ void WiFiTask::processCommand(const String& command) {
     }
     
     // New mission-first protocol
-    if (jsonDoc.containsKey("command")) {
-        String cmd = jsonDoc["command"]; // e.g., start_mission, pause_mission, abort_mission, resume_mission
+    if (jsonDoc["command"].is<const char*>()) {
+        String cmd = jsonDoc["command"].as<const char*>(); // e.g., start_mission, pause_mission, abort_mission, resume_mission
 
         if (cmd == "start_mission") {
             processStartMission();
@@ -107,8 +107,8 @@ void WiFiTask::processCommand(const String& command) {
         if (cmd == "start") { processStartCommand(); return; }
         if (cmd == "stop") { processStopCommand(); return; }
         if (cmd == "set_speed") {
-            if (jsonDoc.containsKey("speed")) {
-                int speed = jsonDoc["speed"];
+            if (jsonDoc["speed"].is<int>()) {
+                int speed = jsonDoc["speed"].as<int>();
                 processSpeedCommand(speed);
                 return;
             }
@@ -122,8 +122,8 @@ void WiFiTask::processCommand(const String& command) {
     }
 
     // Backward-compatible waypoint-only payload
-    if (jsonDoc.containsKey("waypoints")) {
-        JsonArray waypoints = jsonDoc["waypoints"];
+    if (jsonDoc["waypoints"].is<JsonArray>()) {
+        JsonArray waypoints = jsonDoc["waypoints"].as<JsonArray>();
         processWaypoints(waypoints);
         return;
     }
@@ -146,10 +146,11 @@ void WiFiTask::processWaypoints(const JsonArray& waypoints) {
         }
         
         // Accept either {lat, lng} or {lat, lon}
-        if ((waypoint.containsKey("lat") && waypoint.containsKey("lng")) ||
-            (waypoint.containsKey("lat") && waypoint.containsKey("lon"))) {
-            double lat = waypoint["lat"];
-            double lng = waypoint.containsKey("lng") ? waypoint["lng"] : waypoint["lon"];
+        const bool hasLatLng = waypoint["lat"].is<double>() && waypoint["lng"].is<double>();
+        const bool hasLatLon = waypoint["lat"].is<double>() && waypoint["lon"].is<double>();
+        if (hasLatLng || hasLatLon) {
+            double lat = waypoint["lat"].as<double>();
+            double lng = hasLatLng ? waypoint["lng"].as<double>() : waypoint["lon"].as<double>();
             
             Waypoint wp;
             wp.latitude = lat;
@@ -178,7 +179,9 @@ void WiFiTask::processWaypoints(const JsonArray& waypoints) {
 
 void WiFiTask::processStartMission() {
     // Expect mission payload fields: mission_id, waypoints[], path_segments[], parameters{}
-    if (!jsonDoc.containsKey("mission_id") || !jsonDoc.containsKey("waypoints") || !jsonDoc.containsKey("parameters")) {
+    if (!(jsonDoc["mission_id"].is<const char*>() || jsonDoc["mission_id"].is<String>()) ||
+        !jsonDoc["waypoints"].is<JsonArray>() ||
+        !jsonDoc["parameters"].is<JsonObject>()) {
         sendError("Missing mission fields (mission_id, waypoints, parameters)");
         return;
     }
@@ -188,13 +191,13 @@ void WiFiTask::processStartMission() {
 ;
     // 2) Waypoints
     if (jsonDoc["waypoints"].is<JsonArray>()) {
-        JsonArray waypoints = jsonDoc["waypoints"];
+        JsonArray waypoints = jsonDoc["waypoints"].as<JsonArray>();
         processWaypoints(waypoints);
     }
 
     // 3) Path segments (optional)
-    if (jsonDoc.containsKey("path_segments") && jsonDoc["path_segments"].is<JsonArray>()) {
-        JsonArray segments = jsonDoc["path_segments"];
+    if (jsonDoc["path_segments"].is<JsonArray>()) {
+        JsonArray segments = jsonDoc["path_segments"].as<JsonArray>();
         const int maxSeg = min((int)segments.size(), MAX_WAYPOINTS - 1);
         PathSegment segBuf[MAX_WAYPOINTS - 1];
         int segCount = 0;
@@ -216,7 +219,7 @@ void WiFiTask::processStartMission() {
     }
 
     // 4) Mission parameters
-    JsonObject params = jsonDoc["parameters"];
+    JsonObject params = jsonDoc["parameters"].as<JsonObject>();
     MissionParameters mp;
     mp.speed_mps = params["speed_mps"] | 1.0;
     mp.cte_threshold_m = params["cte_threshold_m"] | 2.0;

@@ -20,8 +20,8 @@ private:
     unsigned long lastTransmissionTime;
     unsigned long telemetryInterval;
     
-    // JSON document for telemetry data
-    StaticJsonDocument<MAX_JSON_STRING_LENGTH> telemetryDoc;
+    // JSON document for telemetry data (ArduinoJson v7)
+    JsonDocument telemetryDoc;
     
     // Private methods
     void processTelemetry();
