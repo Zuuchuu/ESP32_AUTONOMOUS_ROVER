@@ -1993,3 +1993,44 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
     def clear_mission_plan_summary(self):
         if hasattr(self, 'mission_plan_summary_label'):
             self.mission_plan_summary_label.setText("No mission plan")
+
+    # Mission plan summary helpers
+    def _format_distance_m(self, meters: float) -> str:
+        if meters is None:
+            return "—"
+        if meters >= 1000:
+            return f"{meters/1000:.2f} km"
+        return f"{meters:.0f} m"
+
+    def _format_duration_s(self, seconds: float) -> str:
+        if seconds is None:
+            return "—"
+        if seconds >= 3600:
+            h = int(seconds // 3600)
+            m = int((seconds % 3600) // 60)
+            return f"{h}h {m}m"
+        if seconds >= 60:
+            return f"{seconds/60:.1f} min"
+        return f"{seconds:.0f} s"
+
+    def update_mission_plan_summary(self, mission_plan: MissionPlan):
+        """Render persistent mission plan summary in mission setup section."""
+        if not hasattr(self, 'mission_plan_summary_label'):
+            return
+        if not mission_plan:
+            self.mission_plan_summary_label.setText("No mission plan")
+            return
+        summary = mission_plan.get_mission_summary()
+        text = (
+            f"Waypoints: {summary['waypoints']}\n"
+            f"Total distance: {self._format_distance_m(summary['total_distance_m'])}\n"
+            f"Estimated duration: {self._format_duration_s(summary['estimated_duration_sec'])}\n"
+            f"Average speed: {summary['average_speed_mps']:.1f} m/s\n"
+            f"Optimization: {summary['optimization']}\n"
+            f"CTE threshold: {mission_plan.cte_threshold:.1f} m"
+        )
+        self.mission_plan_summary_label.setText(text)
+
+    def clear_mission_plan_summary(self):
+        if hasattr(self, 'mission_plan_summary_label'):
+            self.mission_plan_summary_label.setText("No mission plan")

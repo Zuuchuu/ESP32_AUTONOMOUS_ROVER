@@ -143,7 +143,11 @@ bool IMUTask::configureCoordinateSystem() {
     // These settings assume BNO055 is mounted horizontally with chip facing up
     // and the silkscreen arrow pointing forward (rover's front)
     
-    delay(100);
+    // Remap for +X forward (north), +Y left (west, flipped to standard +Y east/right)
+    bno.setAxisRemap(Adafruit_BNO055::REMAP_CONFIG_P3);
+    bno.setAxisSign(Adafruit_BNO055::REMAP_SIGN_P3);
+    delay(100); // Allow remap to take effect
+    
     Serial.println("Coordinate system configured for rover navigation");
     return true;
 }
@@ -203,19 +207,17 @@ void IMUTask::updateIMUData() {
     imuData.calibrationStatus.accelerometer = accel;
     imuData.calibrationStatus.magnetometer = mag;
     
-    // Get quaternion data (most accurate)
-    imu::Quaternion quat = bno.getQuat();
-    imuData.quaternion[0] = quat.w();
-    imuData.quaternion[1] = quat.x();
-    imuData.quaternion[2] = quat.y();
-    imuData.quaternion[3] = quat.z();
-    
-    // Convert quaternion to Euler angles
-    quaternionToEuler(quat.w(), quat.x(), quat.y(), quat.z(), 
-                     imuData.roll, imuData.pitch, imuData.heading);
+    // Get Euler angles directly from library (replaces quaternion conversion)
+    imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    imuData.heading = euler.x();  // Heading (yaw, 0° magnetic north)
+    imuData.roll = euler.y();
+    imuData.pitch = euler.z();
     
     // Normalize heading to 0-360° with 0° = North, clockwise positive
     imuData.heading = normalizeHeading(imuData.heading);
+    
+    // Apply magnetic declination correction for true north
+    imuData.heading = normalizeHeading(imuData.heading + MAGNETIC_DECLINATION);
     
     // Get raw sensor data
     imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
@@ -259,10 +261,10 @@ void IMUTask::updateIMUData() {
     if (sharedData.setIMUData(imuData)) {
         // Debug output for key values
         if (imuData.calibrationStatus.isFullyCalibrated()) {
-            Serial.printf("IMU: Heading=%.1f°, Roll=%.1f°, Pitch=%.1f°, Temp=%.0f°C [CALIBRATED]\\n", 
+            Serial.printf("IMU: Heading=%.1f°, Roll=%.1f°, Pitch=%.1f°, Temp=%.0f°C [CALIBRATED]\n", 
                          imuData.heading, imuData.roll, imuData.pitch, imuData.temperature);
         } else {
-            Serial.printf("IMU: Heading=%.1f°, Cal: S=%d G=%d A=%d M=%d, Temp=%.0f°C\\n", 
+            Serial.printf("IMU: Heading=%.1f°, Cal: S=%d G=%d A=%d M=%d, Temp=%.0f°C\n", 
                          imuData.heading, sys, gyro, accel, mag, imuData.temperature);
         }
     } else {
@@ -322,7 +324,7 @@ bool IMUTask::saveCalibrationData() {
     preferences.putULong("timestamp", millis());
     
     Serial.println("Calibration data saved successfully");
-    Serial.printf("Accel: (%d, %d, %d) Gyro: (%d, %d, %d) Mag: (%d, %d, %d)\\n",
+    Serial.printf("Accel: (%d, %d, %d) Gyro: (%d, %d, %d) Mag: (%d, %d, %d)\n",
                   calibrationData.accel_offset_x, calibrationData.accel_offset_y, calibrationData.accel_offset_z,
                   calibrationData.gyro_offset_x, calibrationData.gyro_offset_y, calibrationData.gyro_offset_z,
                   calibrationData.mag_offset_x, calibrationData.mag_offset_y, calibrationData.mag_offset_z);
@@ -356,8 +358,8 @@ bool IMUTask::loadCalibrationData() {
     calibrationDataLoaded = true;
     
     Serial.println("Calibration data loaded and applied successfully");
-    Serial.printf("Data saved %lu ms ago\\n", millis() - saveTimestamp);
-    Serial.printf("Accel: (%d, %d, %d) Gyro: (%d, %d, %d) Mag: (%d, %d, %d)\\n",
+    Serial.printf("Data saved %lu ms ago\n", millis() - saveTimestamp);
+    Serial.printf("Accel: (%d, %d, %d) Gyro: (%d, %d, %d) Mag: (%d, %d, %d)\n",
                   calibrationData.accel_offset_x, calibrationData.accel_offset_y, calibrationData.accel_offset_z,
                   calibrationData.gyro_offset_x, calibrationData.gyro_offset_y, calibrationData.gyro_offset_z,
                   calibrationData.mag_offset_x, calibrationData.mag_offset_y, calibrationData.mag_offset_z);
@@ -437,26 +439,26 @@ void IMUTask::scanI2CDevices() {
     if (deviceCount == 0) {
         Serial.println("No I2C devices found");
     } else {
-        Serial.printf("Found %d I2C device(s)\\n", deviceCount);
+        Serial.printf("Found %d I2C device(s)\n", deviceCount);
     }
 }
 
 void IMUTask::printIMUInfo() {
     Serial.println("=== BNO055 IMU Status ===");
-    Serial.printf("Initialized: %s\\n", imuInitialized ? "YES" : "NO");
+    Serial.printf("Initialized: %s\n", imuInitialized ? "YES" : "NO");
     
     if (imuInitialized) {
         IMUData imuData;
         if (sharedData.getIMUData(imuData)) {
-            Serial.printf("Heading: %.1f° (True North, Clockwise)\\n", imuData.heading);
-            Serial.printf("Roll: %.1f°, Pitch: %.1f°\\n", imuData.roll, imuData.pitch);
-            Serial.printf("Temperature: %.0f°C\\n", imuData.temperature);
+            Serial.printf("Heading: %.1f° (True North, Clockwise)\n", imuData.heading);
+            Serial.printf("Roll: %.1f°, Pitch: %.1f°\n", imuData.roll, imuData.pitch);
+            Serial.printf("Temperature: %.0f°C\n", imuData.temperature);
             
             printCalibrationStatus();
         }
     }
     
-    Serial.printf("Last update: %lu ms ago\\n", millis() - lastUpdateTime);
+    Serial.printf("Last update: %lu ms ago\n", millis() - lastUpdateTime);
     Serial.println("========================");
 }
 
@@ -464,7 +466,7 @@ void IMUTask::printCalibrationStatus() {
     uint8_t sys, gyro, accel, mag = 0;
     bno.getCalibration(&sys, &gyro, &accel, &mag);
     
-    Serial.printf("Calibration Status: System=%d, Gyro=%d, Accel=%d, Mag=%d\\n", sys, gyro, accel, mag);
+    Serial.printf("Calibration Status: System=%d, Gyro=%d, Accel=%d, Mag=%d\n", sys, gyro, accel, mag);
     
     if (sys >= 3 && gyro >= 3 && accel >= 3 && mag >= 3) {
         Serial.println("✓ FULLY CALIBRATED");
@@ -609,6 +611,9 @@ void imuTaskFunction(void* parameter) {
         return;
     }
     
+    // Reset calibration to clear NVS and force fresh offsets post-remap
+    imuTask.resetCalibration();  // Call once here; comment out after first upload if persistent
+
     while (true) {
         imuTask.run();
         vTaskDelay(pdMS_TO_TICKS(IMU_UPDATE_RATE)); // 10ms for ~100Hz

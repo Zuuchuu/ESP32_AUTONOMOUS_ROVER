@@ -26,6 +26,7 @@ private:
     unsigned long lastCalibrationSaveTime;
     
     // Configuration
+    static constexpr float MAGNETIC_DECLINATION = -0.66f;  // Degrees for Ho Chi Minh City (2025)
     static const uint32_t CALIBRATION_SAVE_INTERVAL = 30000; // Save every 30 seconds when calibrated
     static const char* CALIBRATION_NAMESPACE;
     
