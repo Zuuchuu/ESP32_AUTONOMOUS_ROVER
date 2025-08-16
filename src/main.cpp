@@ -213,7 +213,14 @@ void createTasks() {
         TASK_CORE_NAVIGATION
     );
     
-    // Create Telemetry task
+    // Set up telemetry transmission callback BEFORE creating the task
+    telemetryTask.setTelemetryTransmitter([](const String& data) {
+        if (wifiTask.isClientConnected()) {
+            wifiTask.sendRaw(data);
+        }
+    });
+    
+    // Create Telemetry task (now with callback already set)
     xTaskCreatePinnedToCore(
         telemetryTaskFunction,
         "TelemetryTask",
@@ -223,6 +230,12 @@ void createTasks() {
         &telemetryTaskHandle,
         TASK_CORE_TELEMETRY
     );
+    
+    // Give the telemetry task time to start and initialize
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Start telemetry task now that it's running
+    telemetryTask.startTelemetry();
     
     Serial.println("All tasks created successfully");
 }

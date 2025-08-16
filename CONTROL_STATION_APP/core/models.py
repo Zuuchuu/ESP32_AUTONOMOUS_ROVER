@@ -166,7 +166,6 @@ class TelemetryData:
     
     # Environmental and system data
     temperature: float = 0.0
-    pressure: float = None  # hPa (optional)
     wifi_strength: int = 0
     
     # Metadata
@@ -212,7 +211,6 @@ class TelemetryData:
                 
                 # Environmental and system
                 temperature=imu_data.get("temperature", data.get("temperature", 0.0)),
-                pressure=data.get("pressure"),
                 wifi_strength=data.get("wifi_strength", 0),
                 
                 # Metadata

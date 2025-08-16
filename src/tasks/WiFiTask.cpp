@@ -1,5 +1,6 @@
 #include "tasks/WiFiTask.h"
 #include "tasks/NavigationTask.h"
+#include "core/SharedData.h"
 #include "config/config.h"
 #include "config/wifi_config.h"
 

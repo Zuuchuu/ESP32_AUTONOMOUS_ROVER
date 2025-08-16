@@ -10,7 +10,7 @@
 #define WIFI_PASSWORD           "77779999"
 
 // WiFi Connection Settings
-#define WIFI_TIMEOUT_MS         100000   // Connection timeout
+// WIFI_TIMEOUT_MS is defined in config.h
 #define WIFI_RETRY_DELAY_MS     500     // Delay between retry attempts
 #define WIFI_MAX_RETRIES        10       // Maximum connection attempts
 

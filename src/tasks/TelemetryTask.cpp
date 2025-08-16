@@ -1,13 +1,15 @@
 #include "tasks/TelemetryTask.h"
+#include "core/SharedData.h"
 #include <Arduino.h>
 #include <WiFi.h>
+#include <functional>
 
 // ============================================================================
 // CONSTRUCTOR AND DESTRUCTOR
 // ============================================================================
 
 TelemetryTask::TelemetryTask() 
-    : isActive(false), lastTransmissionTime(0), telemetryInterval(TELEMETRY_UPDATE_RATE) {
+    : isActive(false), lastTransmissionTime(0), telemetryInterval(TELEMETRY_UPDATE_RATE), telemetryTransmitter(nullptr) {
 }
 
 TelemetryTask::~TelemetryTask() {
@@ -37,13 +39,31 @@ bool TelemetryTask::initialize() {
 // ============================================================================
 
 void TelemetryTask::run() {
+    Serial.println("[Telemetry] Telemetry task loop started");
+    
     while (true) {
         if (isActive) {
             processTelemetry();
+            
+            // Debug output every 5 seconds when active
+            static unsigned long lastDebugTime = 0;
+            if (millis() - lastDebugTime > 5000) {
+                Serial.printf("[Telemetry] Task running, Active: %s, Interval: %lu ms, Clients: %s\n", 
+                           isActive ? "Yes" : "No", telemetryInterval, 
+                           hasConnectedClients() ? "Available" : "None");
+                lastDebugTime = millis();
+            }
+        } else {
+            // Debug output every 10 seconds when inactive
+            static unsigned long lastInactiveDebugTime = 0;
+            if (millis() - lastInactiveDebugTime > 10000) {
+                Serial.println("[Telemetry] Task waiting for activation...");
+                lastInactiveDebugTime = millis();
+            }
         }
         
-        // Update at specified interval
-        vTaskDelay(pdMS_TO_TICKS(telemetryInterval));
+        // Small delay to prevent watchdog issues
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -61,20 +81,19 @@ void TelemetryTask::processTelemetry() {
     
     lastTransmissionTime = currentTime;
     
-    // Check if we have connected clients
-    if (!hasConnectedClients()) {
-        return; // No clients connected, skip transmission
-    }
-    
-    // Build and send telemetry data
-    buildTelemetryData();
-    sendTelemetryData();
-    
-    // Print telemetry info periodically
-    static unsigned long lastPrintTime = 0;
-    if (currentTime - lastPrintTime > 10000) { // Print every 10 seconds
-        printTelemetryInfo();
-        lastPrintTime = currentTime;
+    // Always process telemetry when active, regardless of client status
+    // The transmission callback will handle client availability
+    if (isActive) {
+        // Build and send telemetry data
+        buildTelemetryData();
+        sendTelemetryData();
+        
+        // Print telemetry info periodically
+        static unsigned long lastPrintTime = 0;
+        if (currentTime - lastPrintTime > 10000) { // Print every 10 seconds
+            printTelemetryInfo();
+            lastPrintTime = currentTime;
+        }
     }
 }
 
@@ -86,127 +105,116 @@ void TelemetryTask::buildTelemetryData() {
     // Clear previous data
     telemetryDoc.clear();
     
-    // Get current timestamp
-    telemetryDoc["timestamp"] = millis();
-    telemetryDoc["type"] = "telemetry";
-    
     // Get GPS position data
     GPSPosition currentPosition;
-    if (sharedData.getPosition(currentPosition)) {
-        JsonObject position = telemetryDoc["position"].to<JsonObject>();
-        position["latitude"] = currentPosition.latitude;
-        position["longitude"] = currentPosition.longitude;
-        position["isValid"] = currentPosition.isValid;
-        position["timestamp"] = currentPosition.timestamp;
-    }
+    bool hasPosition = sharedData.getPosition(currentPosition);
     
-    // Get IMU data
+    // Get IMU data  
     IMUData currentIMUData;
-    if (sharedData.getIMUData(currentIMUData)) {
-        JsonObject imu = telemetryDoc["imu"].to<JsonObject>();
-        imu["heading"] = currentIMUData.heading;
-        imu["temperature"] = currentIMUData.temperature;
-        imu["isValid"] = currentIMUData.isValid;
-        imu["timestamp"] = currentIMUData.timestamp;
+    bool hasIMU = sharedData.getIMUData(currentIMUData);
+    
+    // Build Control Station compatible format
+    if (hasPosition) {
+        telemetryDoc["lat"] = currentPosition.latitude;
+        telemetryDoc["lon"] = currentPosition.longitude;
+    } else {
+        telemetryDoc["lat"] = 0.0;
+        telemetryDoc["lon"] = 0.0;
+    }
+    
+    if (hasIMU) {
+        telemetryDoc["heading"] = currentIMUData.heading;
+        telemetryDoc["temperature"] = currentIMUData.temperature;
         
-        // Add acceleration data
-        JsonArray acceleration = imu["acceleration"].to<JsonArray>();
-        acceleration.add(currentIMUData.acceleration[0]);
-        acceleration.add(currentIMUData.acceleration[1]);
-        acceleration.add(currentIMUData.acceleration[2]);
+        // Create BNO055 enhanced IMU data structure
+        JsonObject imu_data = telemetryDoc["imu_data"].to<JsonObject>();
         
-        // Add gyroscope data
-        JsonArray gyroscope = imu["gyroscope"].to<JsonArray>();
-        gyroscope.add(currentIMUData.gyroscope[0]);
-        gyroscope.add(currentIMUData.gyroscope[1]);
-        gyroscope.add(currentIMUData.gyroscope[2]);
+        // Enhanced BNO055 data 
+        imu_data["roll"] = currentIMUData.roll;
+        imu_data["pitch"] = currentIMUData.pitch;
         
-        // Add magnetometer data
-        JsonArray magnetometer = imu["magnetometer"].to<JsonArray>();
-        magnetometer.add(currentIMUData.magnetometer[0]);
-        magnetometer.add(currentIMUData.magnetometer[1]);
-        magnetometer.add(currentIMUData.magnetometer[2]);
+        // Quaternion
+        JsonArray quat = imu_data["quaternion"].to<JsonArray>();
+        quat.add(currentIMUData.quaternion[0]);
+        quat.add(currentIMUData.quaternion[1]);
+        quat.add(currentIMUData.quaternion[2]);
+        quat.add(currentIMUData.quaternion[3]);
+        
+        // Raw sensor data
+        JsonArray accel = imu_data["accel"].to<JsonArray>();
+        accel.add(currentIMUData.acceleration[0]);
+        accel.add(currentIMUData.acceleration[1]);
+        accel.add(currentIMUData.acceleration[2]);
+        
+        JsonArray gyro = imu_data["gyro"].to<JsonArray>();
+        gyro.add(currentIMUData.gyroscope[0]);
+        gyro.add(currentIMUData.gyroscope[1]);
+        gyro.add(currentIMUData.gyroscope[2]);
+        
+        JsonArray mag = imu_data["mag"].to<JsonArray>();
+        mag.add(currentIMUData.magnetometer[0]);
+        mag.add(currentIMUData.magnetometer[1]);
+        mag.add(currentIMUData.magnetometer[2]);
+        
+        // Enhanced BNO055 data
+        JsonArray linear_accel = imu_data["linear_accel"].to<JsonArray>();
+        linear_accel.add(currentIMUData.linearAccel[0]);
+        linear_accel.add(currentIMUData.linearAccel[1]);
+        linear_accel.add(currentIMUData.linearAccel[2]);
+        
+        JsonArray gravity = imu_data["gravity"].to<JsonArray>();
+        gravity.add(currentIMUData.gravity[0]);
+        gravity.add(currentIMUData.gravity[1]);
+        gravity.add(currentIMUData.gravity[2]);
+        
+        // BNO055 calibration status
+        JsonObject cal = imu_data["calibration"].to<JsonObject>();
+        cal["sys"] = currentIMUData.calibrationStatus.system;
+        cal["gyro"] = currentIMUData.calibrationStatus.gyroscope;
+        cal["accel"] = currentIMUData.calibrationStatus.accelerometer;
+        cal["mag"] = currentIMUData.calibrationStatus.magnetometer;
+        
+        // Temperature in IMU data for BNO055
+        imu_data["temperature"] = currentIMUData.temperature;
+    } else {
+        telemetryDoc["heading"] = 0.0;
+        telemetryDoc["temperature"] = 0.0;
+        
+        // Create empty IMU structure
+        JsonObject imu_data = telemetryDoc["imu_data"].to<JsonObject>();
+        imu_data["roll"] = 0.0;
+        imu_data["pitch"] = 0.0;
+        
+        JsonArray quat = imu_data["quaternion"].to<JsonArray>();
+        quat.add(1.0); quat.add(0.0); quat.add(0.0); quat.add(0.0);
+        
+        JsonArray accel = imu_data["accel"].to<JsonArray>();
+        accel.add(0.0); accel.add(0.0); accel.add(0.0);
+        
+        JsonArray gyro = imu_data["gyro"].to<JsonArray>();
+        gyro.add(0.0); gyro.add(0.0); gyro.add(0.0);
+        
+        JsonArray mag = imu_data["mag"].to<JsonArray>();
+        mag.add(0.0); mag.add(0.0); mag.add(0.0);
+        
+        JsonArray linear_accel = imu_data["linear_accel"].to<JsonArray>();
+        linear_accel.add(0.0); linear_accel.add(0.0); linear_accel.add(0.0);
+        
+        JsonArray gravity = imu_data["gravity"].to<JsonArray>();
+        gravity.add(0.0); gravity.add(0.0); gravity.add(0.0);
+        
+        JsonObject cal = imu_data["calibration"].to<JsonObject>();
+        cal["sys"] = 0; cal["gyro"] = 0; cal["accel"] = 0; cal["mag"] = 0;
+        
+        imu_data["temperature"] = 0.0;
     }
     
-    // Get rover state
-    RoverState roverState;
-    if (sharedData.getRoverState(roverState)) {
-        JsonObject state = telemetryDoc["rover"].to<JsonObject>();
-        state["isNavigating"] = roverState.isNavigating;
-        state["isConnected"] = roverState.isConnected;
-        state["currentWaypointIndex"] = roverState.currentWaypointIndex;
-        state["totalWaypoints"] = roverState.totalWaypoints;
-        state["currentSpeed"] = roverState.currentSpeed;
-        state["lastUpdateTime"] = roverState.lastUpdateTime;
-        // Mission-related rover fields
-        state["missionState"] = (int)sharedData.getMissionState();
-        state["currentSegmentIndex"] = roverState.currentSegmentIndex;
-        state["totalSegments"] = roverState.totalSegments;
-        state["missionProgressPct"] = roverState.missionProgress;
-        state["distanceToTarget"] = roverState.distanceToTarget;
-        state["totalDistance"] = roverState.totalDistance;
-        state["crossTrackError"] = roverState.crossTrackError;
-        state["missionElapsedMs"] = roverState.missionElapsedTime;
-        state["etaSec"] = roverState.estimatedTimeRemaining;
-    }
+    // Add WiFi signal strength
+    telemetryDoc["wifi_strength"] = WiFi.RSSI();
     
-    // Get system status
-    SystemStatus systemStatus;
-    if (sharedData.getSystemStatus(systemStatus)) {
-        JsonObject status = telemetryDoc["system"].to<JsonObject>();
-        status["wifiConnected"] = systemStatus.wifiConnected;
-        status["gpsFix"] = systemStatus.gpsFix;
-        status["imuCalibrated"] = systemStatus.imuCalibrated;
-        status["wifiSignalStrength"] = systemStatus.wifiSignalStrength;
-        status["batteryVoltage"] = systemStatus.batteryVoltage;
-        status["uptime"] = systemStatus.uptime;
-    }
-    
-    // Add WiFi information
-    JsonObject wifi = telemetryDoc["wifi"].to<JsonObject>();
-    wifi["connected"] = WiFi.status() == WL_CONNECTED;
-    wifi["ssid"] = WiFi.SSID();
-    wifi["rssi"] = WiFi.RSSI();
-    wifi["localIP"] = WiFi.localIP().toString();
-    
-    // Add waypoints information
-    int waypointCount = sharedData.getWaypointCount();
-    if (waypointCount > 0) {
-        JsonArray waypoints = telemetryDoc["waypoints"].to<JsonArray>();
-        for (int i = 0; i < waypointCount; i++) {
-            Waypoint waypoint;
-            if (sharedData.getWaypoint(i, waypoint)) {
-                JsonObject wp = waypoints.add<JsonObject>();
-                wp["index"] = i;
-                wp["latitude"] = waypoint.latitude;
-                wp["longitude"] = waypoint.longitude;
-                wp["isValid"] = waypoint.isValid;
-            }
-        }
-    }
-
-    // Mission info summary
-    {
-        JsonObject mission = telemetryDoc["mission"].to<JsonObject>();
-        mission["id"] = sharedData.getMissionId();
-        mission["state"] = (int)sharedData.getMissionState();
-        mission["segmentCount"] = sharedData.getPathSegmentCount();
-        // Parameters snapshot
-        MissionParameters mp = sharedData.getMissionParameters();
-        JsonObject params = mission["parameters"].to<JsonObject>();
-        params["speed_mps"] = mp.speed_mps;
-        params["cte_threshold_m"] = mp.cte_threshold_m;
-        params["mission_timeout_s"] = mp.mission_timeout_s;
-        params["total_distance_m"] = mp.total_distance_m;
-        params["estimated_duration_s"] = mp.estimated_duration_s;
-    }
-    
-    // Add memory information
-    JsonObject memory = telemetryDoc["memory"].to<JsonObject>();
-    memory["freeHeap"] = ESP.getFreeHeap();
-    memory["minFreeHeap"] = ESP.getMinFreeHeap();
-    memory["maxAllocHeap"] = ESP.getMaxAllocHeap();
-    memory["heapFragmentation"] = 0; // ESP.getHeapFragmentation() not available
+    // Add basic system status for Control Station
+    telemetryDoc["system_status"] = "operational";
+    telemetryDoc["timestamp"] = millis();
 }
 
 // ============================================================================
@@ -221,15 +229,21 @@ void TelemetryTask::sendTelemetryData() {
     // Add newline for TCP transmission
     telemetryString += "\n";
     
-    // Send to all connected clients
-    // Note: This assumes the WiFiTask has a method to broadcast to clients
-    // For now, we'll print to serial for debugging
-    Serial.println("[Telemetry] Sending telemetry data:");
-    Serial.println(telemetryString);
+    // Send to connected clients via telemetry transmitter callback
+    if (telemetryTransmitter) {
+        telemetryTransmitter(telemetryString);
+        Serial.printf("[Telemetry] Sent %d bytes to client via callback\n", telemetryString.length());
+    } else {
+        Serial.println("[Telemetry] ERROR: No telemetry transmitter available, data not sent");
+    }
     
-    // TODO: Implement actual client transmission through WiFiTask
-    // This would require a method in WiFiTask to broadcast to connected clients
-    // For example: wifiTask.broadcastToClients(telemetryString);
+    // Also print to serial for debugging (but less frequently to avoid spam)
+    static unsigned long lastSerialPrint = 0;
+    if (millis() - lastSerialPrint > 10000) {  // Print every 10 seconds
+        Serial.println("[Telemetry] Current telemetry data sample:");
+        Serial.println(telemetryString.substring(0, 200) + "..."); // Show first 200 chars
+        lastSerialPrint = millis();
+    }
 }
 
 // ============================================================================
@@ -237,15 +251,24 @@ void TelemetryTask::sendTelemetryData() {
 // ============================================================================
 
 bool TelemetryTask::hasConnectedClients() {
+    // If telemetry is not active, no clients
+    if (!isActive) {
+        return false;
+    }
+    
     // Check if WiFi is connected
     if (WiFi.status() != WL_CONNECTED) {
         return false;
     }
     
-    // TODO: Check if there are actual TCP clients connected
-    // This would require a method in WiFiTask to check client connections
-    // For now, we'll assume there's always a client when WiFi is connected
+    // Check if we have a telemetry transmitter callback set
+    // This indicates that the system is ready to send data
+    if (!telemetryTransmitter) {
+        return false;
+    }
     
+    // Telemetry is active, WiFi is connected, and transmitter is set
+    // The transmission callback will handle actual client availability
     return true;
 }
 
@@ -326,6 +349,11 @@ void TelemetryTask::setTransmissionEnabled(bool enabled) {
     } else if (!enabled && isActive) {
         stopTelemetry();
     }
+}
+
+void TelemetryTask::setTelemetryTransmitter(std::function<void(const String&)> transmitter) {
+    telemetryTransmitter = transmitter;
+    Serial.println("[Telemetry] Telemetry transmitter callback set");
 }
 
 // ============================================================================

@@ -241,7 +241,6 @@ class MainWindow(QMainWindow):
         self.sensor_gyro_label = make_label("Gyro: —")
         self.sensor_heading_label = make_label("Heading: —")
         self.sensor_temp_label = make_label("Temp: —")
-        self.sensor_pressure_label = make_label("Pressure: —")
         self.sensor_gps_label = make_label("GPS: —")
 
         def sep():
@@ -256,8 +255,6 @@ class MainWindow(QMainWindow):
             self.sensor_heading_label,
             #sep(),
             self.sensor_temp_label,
-            self.sensor_pressure_label,
-            #sep(),
             self.sensor_gps_label,
         ]:
             if isinstance(w, QLabel) and w.text() == "|":
@@ -896,7 +893,7 @@ class MainWindow(QMainWindow):
             self.ip_port_label.setText("IP:Port —")
 
     def update_sensors_status_bar(self, telemetry):
-        """Update sensors row (acc, gyro, heading, temp, pressure, GPS)."""
+        """Update sensors row (acc, gyro, heading, temp, GPS)."""
         if telemetry and telemetry.is_valid:
             # Acc / Gyro arrays may not be full length if data missing
             acc = telemetry.acceleration if telemetry.acceleration and len(telemetry.acceleration) == 3 else [0.0, 0.0, 0.0]
@@ -905,10 +902,6 @@ class MainWindow(QMainWindow):
             self.sensor_gyro_label.setText(f"Gyro: {gyro[0]:.2f}, {gyro[1]:.2f}, {gyro[2]:.2f} °/s")
             self.sensor_heading_label.setText(f"Heading: {telemetry.heading:.1f}°")
             self.sensor_temp_label.setText(f"Temp: {telemetry.temperature:.1f} °C")
-            if hasattr(telemetry, 'pressure') and telemetry.pressure is not None:
-                self.sensor_pressure_label.setText(f"Pressure: {telemetry.pressure:.1f} hPa")
-            else:
-                self.sensor_pressure_label.setText("Pressure: —")
             if telemetry.has_valid_position():
                 self.sensor_gps_label.setText(f"GPS: {telemetry.latitude:.5f}, {telemetry.longitude:.5f}")
             else:
@@ -918,7 +911,6 @@ class MainWindow(QMainWindow):
             self.sensor_gyro_label.setText("Gyro: —")
             self.sensor_heading_label.setText("Heading: —")
             self.sensor_temp_label.setText("Temp: —")
-            self.sensor_pressure_label.setText("Pressure: —")
             self.sensor_gps_label.setText("GPS: —")
     
 
@@ -1546,10 +1538,15 @@ class MainWindow(QMainWindow):
     # Mission planner event handlers
     def on_mission_plan_requested(self):
         """Handle mission planning request."""
+        print(f"[DEBUG] Mission planning requested")
+        
         waypoints = self.app_service.get_waypoints()
         if len(waypoints) < 2:
             QMessageBox.warning(self, "Mission Planning", "At least 2 waypoints required for mission planning.")
+            print(f"[DEBUG] Mission planning failed - insufficient waypoints: {len(waypoints)}")
             return
+        
+        print(f"[DEBUG] Planning mission with {len(waypoints)} waypoints")
         
         # Get mission settings from setup interface (prioritize new interface)
         if hasattr(self, 'setup_optimize_checkbox'):
@@ -1567,14 +1564,18 @@ class MainWindow(QMainWindow):
             rover_speed = 1.0
             cte_threshold = 0.1
         
+        print(f"[DEBUG] Mission settings - Optimize: {optimize_order}, Speed: {rover_speed}, CTE: {cte_threshold}")
+        
         # Get current rover position if available
         current_position = None
         if self.app_service.get_connection_state() == ConnectionState.CONNECTED:
             telemetry = self.app_service.get_current_telemetry()
             if telemetry and telemetry.has_valid_position():
                 current_position = (telemetry.latitude, telemetry.longitude)
+                print(f"[DEBUG] Using current rover position: {current_position}")
         
         # Plan mission
+        print(f"[DEBUG] Calling mission planner...")
         success = self.mission_planner.plan_mission(
             waypoints=waypoints,
             start_position=current_position,
@@ -1583,35 +1584,52 @@ class MainWindow(QMainWindow):
             cte_threshold=cte_threshold
         )
         
-        if not success:
+        if success:
+            print(f"[DEBUG] Mission planning successful")
+        else:
+            print(f"[DEBUG] Mission planning failed")
             QMessageBox.critical(self, "Mission Planning", "Failed to plan mission. Check logs for details.")
     
     def on_mission_start_requested(self):
         """Handle mission start request."""
+        print(f"[DEBUG] Mission start requested")
+        
         if not self.current_mission:
             QMessageBox.warning(self, "Mission Start", "No mission plan available. Plan a mission first.")
+            print(f"[DEBUG] Mission start failed - no mission plan")
             return
         
         if self.app_service.get_connection_state() != ConnectionState.CONNECTED:
             QMessageBox.warning(self, "Mission Start", "Must be connected to rover to start mission.")
+            print(f"[DEBUG] Mission start failed - not connected to rover")
             return
+        
+        print(f"[DEBUG] Starting mission: {self.current_mission}")
         
         # Get current rover position; if unavailable, fall back to first mission waypoint
         telemetry = self.app_service.get_current_telemetry()
         if telemetry and telemetry.has_valid_position():
             current_position = (telemetry.latitude, telemetry.longitude)
+            print(f"[DEBUG] Using current telemetry position: {current_position}")
         else:
             # Fallback for simulator/initial start: use first waypoint as starting position
             if self.current_mission and self.current_mission.waypoints:
                 wp0 = self.current_mission.waypoints[0]
                 current_position = (wp0.latitude, wp0.longitude)
+                print(f"[DEBUG] Using first waypoint as fallback position: {current_position}")
             else:
                 QMessageBox.warning(self, "Mission Start", "No valid position or waypoints available to start.")
+                print(f"[DEBUG] Mission start failed - no valid position or waypoints")
                 return
         
         # Start mission
+        print(f"[DEBUG] Calling mission planner start_mission...")
         success = self.mission_planner.start_mission(current_position)
-        if not success:
+        
+        if success:
+            print(f"[DEBUG] Mission start successful")
+        else:
+            print(f"[DEBUG] Mission start failed")
             QMessageBox.critical(self, "Mission Start", "Failed to start mission. Check logs for details.")
     
     def on_mission_pause_requested(self):
@@ -1693,6 +1711,8 @@ class MainWindow(QMainWindow):
     
     def on_mission_started(self, mission_plan):
         """Handle mission started event."""
+        print(f"[DEBUG] Mission started: {mission_plan}")  # Debug output
+        
         # Update control buttons
         if hasattr(self, 'control_start_btn'):
             self.control_start_btn.setEnabled(False)
@@ -1703,27 +1723,49 @@ class MainWindow(QMainWindow):
             self.pause_mission_btn.setEnabled(True)
             self.abort_mission_btn.setEnabled(True)
         
+        # CRITICAL: Update progress section immediately when mission starts
+        if hasattr(self, 'progress_main_display'):
+            self.progress_main_display.setText("Mission started - Rover is now autonomous")
+            print(f"[DEBUG] Updated progress_main_display")
+        
+        # Update progress metrics to show initial state
+        if hasattr(self, 'progress_completion_label'):
+            self.progress_completion_label.setText("Progress: 0%")
+            print(f"[DEBUG] Updated progress_completion_label to 0%")
+        if hasattr(self, 'progress_eta_label'):
+            self.progress_eta_label.setText("ETA: Calculating...")
+            print(f"[DEBUG] Updated progress_eta_label to Calculating...")
+        if hasattr(self, 'progress_cte_label'):
+            self.progress_cte_label.setText("CTE: 0.0m")
+            print(f"[DEBUG] Updated progress_cte_label to 0.0m")
+        
         # Adapt UI for active mission
         self._adapt_ui_for_mission_state("active")
         
         self.update_status_message("Mission started - rover is now autonomous")
+        print(f"[DEBUG] Mission start complete - UI updated")
     
     def on_mission_progress_updated(self, progress):
         """Handle mission progress update."""
+        print(f"[DEBUG] Progress update received: {progress}")
+        print(f"[DEBUG] Progress is_active: {progress.is_active}")
+        print(f"[DEBUG] Progress status: {progress.mission_status}")
+        
         self.current_mission_progress = progress
         
         # Update progress display
         if hasattr(self, 'mission_progress_display'):
             stats = progress.get_progress_summary()
             progress_text = f"""Mission Active:
-• Progress: {stats['completion_pct']:.1f}%
-• Waypoint: {stats['current_waypoint']} of {stats['total_segments']}
-• Distance to target: {stats['distance_to_target_m']:.1f}m
-• Cross-track error: {stats['cross_track_error_m']:.1f}m
-• Speed: {stats['current_speed_mps']:.1f} m/s
-• Status: {stats['status']}"""
+    • Progress: {stats['completion_pct']:.1f}%
+    • Waypoint: {stats['current_waypoint']} of {stats['total_segments']}
+    • Distance to target: {stats['distance_to_target_m']:.1f}m
+    • Cross-track error: {stats['cross_track_error_m']:.1f}m
+    • Speed: {stats['current_speed_mps']:.1f} m/s
+    • Status: {stats['status']}"""
             
             self.mission_progress_display.setText(progress_text)
+            print(f"[DEBUG] Updated mission_progress_display")
         
         # Update new progress section
         stats = progress.get_progress_summary()
@@ -1732,15 +1774,20 @@ class MainWindow(QMainWindow):
                 f"Mission {stats['completion_pct']:.1f}% complete\n"
                 f"Waypoint {stats['current_waypoint']} of {stats['total_segments']}"
             )
+            print(f"[DEBUG] Updated progress_main_display with progress: {stats['completion_pct']:.1f}%")
         
         # Update metrics labels
         if hasattr(self, 'progress_eta_label'):
             self.progress_eta_label.setText(f"ETA: {stats['eta_min']:.1f}min")
+            print(f"[DEBUG] Updated progress_eta_label: {stats['eta_min']:.1f}min")
         if hasattr(self, 'progress_completion_label'):
             self.progress_completion_label.setText(f"Progress: {stats['completion_pct']:.0f}%")
+            print(f"[DEBUG] Updated progress_completion_label: {stats['completion_pct']:.0f}%")
         if hasattr(self, 'progress_cte_label'):
             self.progress_cte_label.setText(f"CTE: {stats['cross_track_error_m']:.1f}m")
+            print(f"[DEBUG] Updated progress_cte_label: {stats['cross_track_error_m']:.1f}m")
         
+        # Update legacy metrics (if they exist)
         if hasattr(self, 'eta_label'):
             self.eta_label.setText(f"ETA: {stats['eta_min']:.1f} min")
         if hasattr(self, 'completion_label'):
@@ -1750,27 +1797,40 @@ class MainWindow(QMainWindow):
         
         # Update button states based on mission status
         if progress.is_active:
-            self.start_mission_btn.setText("Resume Mission")
-            self.start_mission_btn.setEnabled(False)
-            self.pause_mission_btn.setEnabled(True)
-            self.abort_mission_btn.setEnabled(True)
+            if hasattr(self, 'start_mission_btn'):
+                self.start_mission_btn.setText("Resume Mission")
+                self.start_mission_btn.setEnabled(False)
+            if hasattr(self, 'pause_mission_btn'):
+                self.pause_mission_btn.setEnabled(True)
+            if hasattr(self, 'abort_mission_btn'):
+                self.abort_mission_btn.setEnabled(True)
+            print(f"[DEBUG] Mission is active - buttons updated")
         elif progress.mission_status == "paused":
-            self.start_mission_btn.setText("Resume Mission")
-            self.start_mission_btn.setEnabled(True)
-            self.pause_mission_btn.setEnabled(False)
-            self.abort_mission_btn.setEnabled(True)
+            if hasattr(self, 'start_mission_btn'):
+                self.start_mission_btn.setText("Resume Mission")
+                self.start_mission_btn.setEnabled(True)
+            if hasattr(self, 'pause_mission_btn'):
+                self.pause_mission_btn.setEnabled(False)
+            if hasattr(self, 'abort_mission_btn'):
+                self.abort_mission_btn.setEnabled(True)
+            print(f"[DEBUG] Mission is paused - buttons updated")
         elif progress.is_completed:
             self._mission_completed()
+            print(f"[DEBUG] Mission completed - calling _mission_completed")
         
         # Update map visualization
         if self.current_mission:
             self.map_widget.update_mission_progress(progress, self.current_mission)
             self.map_widget.show_cross_track_error(progress, self.current_mission)
             self.map_widget.update_mission_statistics(progress)
+            print(f"[DEBUG] Map visualization updated")
         
         # Update rover trail
         if hasattr(self.mission_planner, 'position_history'):
             self.map_widget.show_rover_trail(self.mission_planner.position_history)
+            print(f"[DEBUG] Rover trail updated")
+        
+        print(f"[DEBUG] Progress update complete")
     
     def on_mission_completed(self, analytics):
         """Handle mission completion."""
@@ -1790,8 +1850,20 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
     
     def on_mission_aborted(self, reason):
         """Handle mission abort."""
-        self.mission_control_panel.mission_aborted(reason)
+        # Reset mission interface to initial state
+        self._reset_mission_interface()
+        
+        # Update displays to show mission aborted
+        if hasattr(self, 'progress_main_display'):
+            self.progress_main_display.setText("Mission aborted")
+        if hasattr(self, 'mission_progress_display'):
+            self.mission_progress_display.setText("Mission aborted")
+        
+        # Update status
         self.update_status_message(f"Mission aborted: {reason}")
+        
+        # Show abort notification
+        QMessageBox.warning(self, "Mission Aborted", f"Mission has been aborted.\n\nReason: {reason}")
     
     def on_waypoint_reached(self, waypoint_index):
         """Handle waypoint reached event."""
@@ -1921,4 +1993,3 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
     def clear_mission_plan_summary(self):
         if hasattr(self, 'mission_plan_summary_label'):
             self.mission_plan_summary_label.setText("No mission plan")
-
