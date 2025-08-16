@@ -30,6 +30,60 @@ class NavigationState(Enum):
 
 
 @dataclass
+class BNO055CalibrationStatus:
+    """
+    BNO055 calibration status matching ESP32 BNO055CalibrationStatus structure.
+    
+    Each sensor calibration ranges from 0-3:
+    - 0: Uncalibrated
+    - 1: Poor calibration
+    - 2: Good calibration  
+    - 3: Fully calibrated
+    """
+    system: int = 0          # System calibration status (0-3)
+    gyroscope: int = 0       # Gyroscope calibration status (0-3)
+    accelerometer: int = 0   # Accelerometer calibration status (0-3)
+    magnetometer: int = 0    # Magnetometer calibration status (0-3)
+    
+    def __post_init__(self):
+        """Validate calibration values are in valid range."""
+        for field_name, value in [("system", self.system), ("gyroscope", self.gyroscope), 
+                                 ("accelerometer", self.accelerometer), ("magnetometer", self.magnetometer)]:
+            if not (0 <= value <= 3):
+                raise ValueError(f"Invalid {field_name} calibration: {value}. Must be 0-3.")
+    
+    def is_fully_calibrated(self) -> bool:
+        """Check if all sensors are fully calibrated."""
+        return (self.system >= 3 and self.gyroscope >= 3 and 
+                self.accelerometer >= 3 and self.magnetometer >= 3)
+    
+    def is_magnetometer_calibrated(self) -> bool:
+        """Check if magnetometer is sufficiently calibrated for heading accuracy."""
+        return self.magnetometer >= 3
+    
+    def get_overall_status(self) -> str:
+        """Get human-readable overall calibration status."""
+        if self.is_fully_calibrated():
+            return "Fully Calibrated"
+        elif self.magnetometer >= 3:
+            return "Heading Ready"
+        elif max(self.system, self.gyroscope, self.accelerometer, self.magnetometer) >= 2:
+            return "Calibrating..."
+        else:
+            return "Needs Calibration"
+    
+    @classmethod
+    def from_esp32_data(cls, data: Dict[str, Any]) -> 'BNO055CalibrationStatus':
+        """Create calibration status from ESP32 telemetry data."""
+        return cls(
+            system=data.get("sys", 0),
+            gyroscope=data.get("gyro", 0),
+            accelerometer=data.get("accel", 0),
+            magnetometer=data.get("mag", 0)
+        )
+
+
+@dataclass
 class Waypoint:
     """
     Waypoint data model compatible with ESP32 rover protocol.
@@ -73,42 +127,97 @@ class Waypoint:
 @dataclass
 class TelemetryData:
     """
-    Telemetry data model matching ESP32 rover output format.
+    Enhanced telemetry data model for BNO055 ESP32 rover output format.
     
-    ESP32 sends: {
+    ESP32 BNO055 sends: {
         "lat": float, "lon": float, "heading": float,
-        "imu_data": {"accel": [x,y,z], "gyro": [x,y,z], "mag": [x,y,z]},
-        "temperature": float, "wifi_strength": int
+        "imu_data": {
+            "roll": float, "pitch": float,
+            "quaternion": [w, x, y, z],
+            "accel": [x,y,z], "gyro": [x,y,z], "mag": [x,y,z],
+            "linear_accel": [x,y,z], "gravity": [x,y,z],
+            "calibration": {"sys": 0-3, "gyro": 0-3, "accel": 0-3, "mag": 0-3},
+            "temperature": float
+        },
+        "wifi_strength": int
     }
     """
+    # Position and orientation
     latitude: float = 0.0
     longitude: float = 0.0
     heading: float = 0.0
+    roll: float = 0.0        # Roll angle in degrees (aviation convention)
+    pitch: float = 0.0       # Pitch angle in degrees (aviation convention)
+    
+    # Quaternion data for advanced navigation
+    quaternion: List[float] = field(default_factory=lambda: [1.0, 0.0, 0.0, 0.0])  # [w, x, y, z]
+    
+    # Raw sensor data (legacy compatibility)
     acceleration: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     gyroscope: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     magnetometer: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    
+    # Enhanced BNO055 sensor data
+    linear_acceleration: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])  # Gravity removed
+    gravity_vector: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])      # Gravity only
+    
+    # Calibration status
+    calibration_status: BNO055CalibrationStatus = field(default_factory=BNO055CalibrationStatus)
+    
+    # Environmental and system data
     temperature: float = 0.0
     pressure: float = None  # hPa (optional)
     wifi_strength: int = 0
+    
+    # Metadata
     timestamp: float = field(default_factory=time.time)
     is_valid: bool = True
+    has_enhanced_imu: bool = False  # True if BNO055 data is present
     
     @classmethod
     def from_esp32_data(cls, data: Dict[str, Any]) -> 'TelemetryData':
-        """Create telemetry from ESP32 JSON data."""
+        """Create telemetry from ESP32 JSON data, supporting both legacy and BNO055 formats."""
         try:
             imu_data = data.get("imu_data", {})
+            
+            # Check if this is enhanced BNO055 format
+            has_enhanced = any(key in imu_data for key in ["roll", "pitch", "quaternion", "calibration"])
+            
+            # Create calibration status
+            calibration_data = imu_data.get("calibration", {})
+            calibration_status = BNO055CalibrationStatus.from_esp32_data(calibration_data) if calibration_data else BNO055CalibrationStatus()
+            
             return cls(
+                # Position and basic orientation
                 latitude=data.get("lat", 0.0),
                 longitude=data.get("lon", 0.0),
                 heading=data.get("heading", 0.0),
+                
+                # BNO055 enhanced orientation (if available)
+                roll=imu_data.get("roll", 0.0) if has_enhanced else 0.0,
+                pitch=imu_data.get("pitch", 0.0) if has_enhanced else 0.0,
+                quaternion=imu_data.get("quaternion", [1.0, 0.0, 0.0, 0.0]) if has_enhanced else [1.0, 0.0, 0.0, 0.0],
+                
+                # Raw sensor data (legacy compatibility)
                 acceleration=imu_data.get("accel", [0.0, 0.0, 0.0]),
                 gyroscope=imu_data.get("gyro", [0.0, 0.0, 0.0]),
                 magnetometer=imu_data.get("mag", [0.0, 0.0, 0.0]),
-                temperature=data.get("temperature", 0.0),
+                
+                # Enhanced BNO055 data (if available)
+                linear_acceleration=imu_data.get("linear_accel", [0.0, 0.0, 0.0]) if has_enhanced else [0.0, 0.0, 0.0],
+                gravity_vector=imu_data.get("gravity", [0.0, 0.0, 0.0]) if has_enhanced else [0.0, 0.0, 0.0],
+                
+                # Calibration status
+                calibration_status=calibration_status,
+                
+                # Environmental and system
+                temperature=imu_data.get("temperature", data.get("temperature", 0.0)),
                 pressure=data.get("pressure"),
                 wifi_strength=data.get("wifi_strength", 0),
-                is_valid=True
+                
+                # Metadata
+                is_valid=True,
+                has_enhanced_imu=has_enhanced
             )
         except (KeyError, TypeError, ValueError) as e:
             # Return invalid telemetry data for error cases
@@ -120,6 +229,23 @@ class TelemetryData:
                 -90 <= self.latitude <= 90 and 
                 -180 <= self.longitude <= 180 and
                 (self.latitude != 0.0 or self.longitude != 0.0))
+    
+    def is_navigation_ready(self) -> bool:
+        """Check if BNO055 is calibrated enough for reliable navigation."""
+        return (self.is_valid and self.has_enhanced_imu and 
+                self.calibration_status.is_magnetometer_calibrated())
+    
+    def get_orientation_summary(self) -> str:
+        """Get human-readable orientation summary."""
+        if not self.has_enhanced_imu:
+            return f"Heading: {self.heading:.1f}°"
+        return f"H: {self.heading:.1f}° R: {self.roll:.1f}° P: {self.pitch:.1f}°"
+    
+    def get_calibration_summary(self) -> str:
+        """Get human-readable calibration status summary."""
+        if not self.has_enhanced_imu:
+            return "Legacy IMU"
+        return self.calibration_status.get_overall_status()
 
 
 @dataclass
@@ -142,11 +268,6 @@ class RoverState:
                 self.last_telemetry.is_valid)
 
 
-@dataclass
-class AppConfig:
-    """Deprecated: retained minimal fields for compatibility; ConfigManager is the source of truth."""
-    # Map settings used in code; values overridden by ConfigManager when available
-    max_waypoints: int = 10
 
 
 class AppState(QObject):
@@ -168,7 +289,7 @@ class AppState(QObject):
         super().__init__()
         self._rover_state = RoverState()
         self._waypoints: List[Waypoint] = []
-        self._config = AppConfig()
+        self._max_waypoints = 10  # Default value, can be overridden by ConfigManager
     
     @property
     def rover_state(self) -> RoverState:
@@ -181,9 +302,13 @@ class AppState(QObject):
         return self._waypoints.copy()
     
     @property
-    def config(self) -> AppConfig:
-        """Get application configuration."""
-        return self._config
+    def max_waypoints(self) -> int:
+        """Get maximum waypoints limit."""
+        return self._max_waypoints
+    
+    def set_max_waypoints(self, value: int):
+        """Set maximum waypoints limit (called by ConfigManager)."""
+        self._max_waypoints = value
     
     def update_connection_state(self, state: ConnectionState, error_msg: str = ""):
         """Update connection state and emit signal."""
@@ -222,7 +347,7 @@ class AppState(QObject):
     
     def add_waypoint(self, waypoint: Waypoint) -> bool:
         """Add waypoint if under limit."""
-        if len(self._waypoints) < self._config.max_waypoints:
+        if len(self._waypoints) < self._max_waypoints:
             waypoint.id = len(self._waypoints) + 1
             self._waypoints.append(waypoint)
             self._rover_state.total_waypoints = len(self._waypoints)

@@ -6,14 +6,14 @@ services, and application state management.
 """
 
 from .models import (
-    RoverState, TelemetryData, Waypoint, AppConfig,
+    RoverState, TelemetryData, Waypoint,
     ConnectionState, NavigationState, PathSegment,
     MissionPlan, MissionProgress, MissionAnalytics
 )
 from .services import ApplicationService
 
 __all__ = [
-    'RoverState', 'TelemetryData', 'Waypoint', 'AppConfig',
+    'RoverState', 'TelemetryData', 'Waypoint',
     'ConnectionState', 'NavigationState', 'PathSegment',
     'MissionPlan', 'MissionProgress', 'MissionAnalytics',
     'ApplicationService'

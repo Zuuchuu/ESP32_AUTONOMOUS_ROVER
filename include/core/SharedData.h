@@ -20,22 +20,61 @@ struct GPSPosition {
     GPSPosition() : latitude(0.0), longitude(0.0), isValid(false), timestamp(0) {}
 };
 
-// IMU Data structure
+// BNO055 Calibration Status structure
+struct BNO055CalibrationStatus {
+    uint8_t system;          // System calibration status (0-3)
+    uint8_t gyroscope;       // Gyroscope calibration status (0-3)
+    uint8_t accelerometer;   // Accelerometer calibration status (0-3)
+    uint8_t magnetometer;    // Magnetometer calibration status (0-3)
+    
+    BNO055CalibrationStatus() : system(0), gyroscope(0), accelerometer(0), magnetometer(0) {}
+    
+    bool isFullyCalibrated() const {
+        return (system >= 3 && gyroscope >= 3 && accelerometer >= 3 && magnetometer >= 3);
+    }
+    
+    bool isMagnetometerCalibrated() const {
+        return magnetometer >= 3;
+    }
+};
+
+// Enhanced IMU Data structure for BNO055
 struct IMUData {
-    float heading;           // Compass heading in degrees (0-360)
-    float acceleration[3];   // X, Y, Z acceleration
-    float gyroscope[3];      // X, Y, Z angular velocity
-    float magnetometer[3];   // X, Y, Z magnetic field
+    // Orientation data (primary for rover navigation)
+    float heading;           // Compass heading in degrees (0-360, 0=True North, clockwise)
+    float roll;              // Roll angle in degrees (aviation convention)
+    float pitch;             // Pitch angle in degrees (aviation convention)
+    
+    // Quaternion data (for advanced navigation)
+    float quaternion[4];     // w, x, y, z quaternion components
+    
+    // Raw sensor data (for diagnostics and advanced processing)
+    float acceleration[3];   // X, Y, Z linear acceleration (m/s²)
+    float gyroscope[3];      // X, Y, Z angular velocity (rad/s)
+    float magnetometer[3];   // X, Y, Z magnetic field (µT)
+    
+    // Additional BNO055 features
+    float linearAccel[3];    // X, Y, Z linear acceleration (gravity removed)
+    float gravity[3];        // X, Y, Z gravity vector
+    
+    // Status and metadata
+    BNO055CalibrationStatus calibrationStatus;
     float temperature;       // Temperature in Celsius
     bool isValid;
     unsigned long timestamp;
     
-    IMUData() : heading(0.0), isValid(false), timestamp(0) {
+    IMUData() : heading(0.0), roll(0.0), pitch(0.0), temperature(0.0), isValid(false), timestamp(0) {
         for (int i = 0; i < 3; i++) {
             acceleration[i] = 0.0;
             gyroscope[i] = 0.0;
             magnetometer[i] = 0.0;
+            linearAccel[i] = 0.0;
+            gravity[i] = 0.0;
         }
+        for (int i = 0; i < 4; i++) {
+            quaternion[i] = 0.0;
+        }
+        quaternion[0] = 1.0; // Default quaternion identity
     }
 };
 

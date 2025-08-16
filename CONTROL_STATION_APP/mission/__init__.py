@@ -9,12 +9,12 @@ This module provides comprehensive mission planning capabilities including:
 """
 
 from .planner import MissionPlanner
-from .algorithms import PathPlanningAlgorithms, WaypointOptimizer
-from .path_optimizer import PathOptimizer
-from .trajectory import TrajectoryManager
 from .visualizer import MissionVisualizer
 
+# Other classes (PathPlanningAlgorithms, WaypointOptimizer, PathOptimizer, 
+# TrajectoryManager) are used internally by MissionPlanner and don't need 
+# to be part of the public API
+
 __all__ = [
-    'MissionPlanner', 'PathPlanningAlgorithms', 'WaypointOptimizer',
-    'PathOptimizer', 'TrajectoryManager', 'MissionVisualizer'
+    'MissionPlanner', 'MissionVisualizer'
 ]

@@ -252,12 +252,12 @@ class MainWindow(QMainWindow):
         for w in [
             self.sensor_acc_label,
             self.sensor_gyro_label,
-            sep(),
+            #sep(),
             self.sensor_heading_label,
-            sep(),
+            #sep(),
             self.sensor_temp_label,
             self.sensor_pressure_label,
-            sep(),
+            #sep(),
             self.sensor_gps_label,
         ]:
             if isinstance(w, QLabel) and w.text() == "|":
@@ -969,9 +969,6 @@ class MainWindow(QMainWindow):
             # Reset to planning state
             pass  # Mission status now shown in progress section
     
-    # Legacy integrated mission tab removed
-    
-    # Legacy status tab removed
     
     def create_mission_planning_section(self) -> QWidget:
         """Create mission planning section with optimization and statistics."""
@@ -1322,7 +1319,7 @@ class MainWindow(QMainWindow):
         self.setup_cte_slider.valueChanged.connect(lambda v: self.setup_cte_spinner.setValue(self.setup_cte_slider._min_val + v*self.setup_cte_slider._step))
         self.setup_cte_spinner.valueChanged.connect(lambda val: self.setup_cte_slider.setValue(int(round((val - self.setup_cte_slider._min_val)/self.setup_cte_slider._step))))
         
-        # Connect legacy mission control signals (for backward compatibility)
+        # Connect mission control signals
         if hasattr(self, 'plan_mission_btn'):
             self.plan_mission_btn.clicked.connect(self.on_mission_plan_requested)
         if hasattr(self, 'start_mission_btn'):
@@ -1337,7 +1334,7 @@ class MainWindow(QMainWindow):
             self.optimize_route_checkbox.toggled.connect(self.on_waypoint_optimization_toggled)
         if hasattr(self, 'mission_speed_spinner'):
             self.mission_speed_spinner.valueChanged.connect(self.on_mission_speed_changed)
-            # Sync sliders and spinboxes for legacy interface
+            # Sync sliders and spinboxes
             if hasattr(self, 'mission_speed_slider'):
                 self.mission_speed_slider.valueChanged.connect(lambda v: self.mission_speed_spinner.setValue(self.mission_speed_slider._min_val + v*self.mission_speed_slider._step))
                 self.mission_speed_spinner.valueChanged.connect(lambda val: self.mission_speed_slider.setValue(int(round((val - self.mission_speed_slider._min_val)/self.mission_speed_slider._step))))
@@ -1404,7 +1401,6 @@ class MainWindow(QMainWindow):
     
     def on_navigation_state_changed(self, state: NavigationState):
         """Handle navigation state changes."""
-        # Legacy navigation state handling removed
 
         
         # Update status
@@ -1561,7 +1557,7 @@ class MainWindow(QMainWindow):
             rover_speed = self.setup_speed_spinner.value()
             cte_threshold = self.setup_cte_spinner.value()
         elif hasattr(self, 'optimize_route_checkbox'):
-            # Fallback to legacy interface
+            # Update interface
             optimize_order = self.optimize_route_checkbox.isChecked()
             rover_speed = self.mission_speed_spinner.value()
             cte_threshold = self.cte_threshold_spinner.value()
@@ -1659,7 +1655,7 @@ class MainWindow(QMainWindow):
         """Handle mission plan ready event."""
         self.current_mission = mission_plan
         
-        # Update mission statistics display (legacy interface)
+        # Update mission statistics display
         if hasattr(self, 'mission_stats_display'):
             stats = mission_plan.get_mission_summary()
             stats_text = f"""Mission Plan Ready:
@@ -1716,7 +1712,7 @@ class MainWindow(QMainWindow):
         """Handle mission progress update."""
         self.current_mission_progress = progress
         
-        # Update progress display (legacy interface)
+        # Update progress display
         if hasattr(self, 'mission_progress_display'):
             stats = progress.get_progress_summary()
             progress_text = f"""Mission Active:
@@ -1737,7 +1733,7 @@ class MainWindow(QMainWindow):
                 f"Waypoint {stats['current_waypoint']} of {stats['total_segments']}"
             )
         
-        # Update metrics labels (both legacy and new)
+        # Update metrics labels
         if hasattr(self, 'progress_eta_label'):
             self.progress_eta_label.setText(f"ETA: {stats['eta_min']:.1f}min")
         if hasattr(self, 'progress_completion_label'):

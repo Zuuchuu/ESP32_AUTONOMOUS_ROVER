@@ -17,7 +17,7 @@
 // Task Stack Sizes (in bytes)
 #define TASK_STACK_SIZE_WIFI      8192
 #define TASK_STACK_SIZE_GPS       4096
-#define TASK_STACK_SIZE_IMU       4096
+#define TASK_STACK_SIZE_IMU       8192
 #define TASK_STACK_SIZE_NAVIGATION 8192
 #define TASK_STACK_SIZE_TELEMETRY 4096
 

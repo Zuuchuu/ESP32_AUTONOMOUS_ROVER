@@ -6,13 +6,13 @@
 // ============================================================================
 
 // WiFi Credentials - UPDATE THESE WITH YOUR NETWORK INFO
-#define WIFI_SSID               "YourWiFiNetworkName"
-#define WIFI_PASSWORD           "YourWiFiPassword"
+#define WIFI_SSID               "TRI AN"
+#define WIFI_PASSWORD           "77779999"
 
 // WiFi Connection Settings
-#define WIFI_TIMEOUT_MS         10000   // Connection timeout
+#define WIFI_TIMEOUT_MS         100000   // Connection timeout
 #define WIFI_RETRY_DELAY_MS     500     // Delay between retry attempts
-#define WIFI_MAX_RETRIES        5       // Maximum connection attempts
+#define WIFI_MAX_RETRIES        10       // Maximum connection attempts
 
 // ============================================================================
 // NETWORK MODE CONFIGURATION

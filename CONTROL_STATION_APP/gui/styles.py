@@ -68,8 +68,6 @@ class StyleManager(QObject):
             color: #666666;
         }
         
-        /* Legacy special button objectName styles removed */
-        
         /* Input Field Styling */
         QLineEdit {
             padding: 8px 12px;
@@ -196,9 +194,6 @@ class StyleManager(QObject):
         QScrollBar::handle:vertical:hover {
             background: #999999;
         }
-        
-        /* Mission Control Panel Specific Styles */
-        /* Legacy mission button styles removed (not used) */
         """
     
     def get_connection_status_style(self, connected: bool) -> str:

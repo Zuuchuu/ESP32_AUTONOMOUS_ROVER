@@ -3,39 +3,59 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-#include <Adafruit_HMC5883_U.h>
+#include <Adafruit_BNO055.h>
+#include <Preferences.h>
 #include "core/SharedData.h"
 
 // ============================================================================
-// IMU TASK CLASS
+// BNO055 IMU TASK CLASS
 // ============================================================================
 
 class IMUTask {
 private:
-    Adafruit_MPU6050 mpu;
-    Adafruit_HMC5883_Unified compass;
+    Adafruit_BNO055 bno;
+    Preferences preferences;
     bool imuInitialized;
     unsigned long lastUpdateTime;
     
-    // Calibration data
-    float magOffsetX, magOffsetY, magOffsetZ;
-    float magScaleX, magScaleY, magScaleZ;
-    bool calibrated;
+    // Calibration management
+    bool calibrationDataLoaded;
+    bool calibrationInProgress;
+    BNO055CalibrationStatus lastCalibrationStatus;
+    unsigned long lastCalibrationSaveTime;
     
-    // IMU data processing
+    // Configuration
+    static const uint32_t CALIBRATION_SAVE_INTERVAL = 30000; // Save every 30 seconds when calibrated
+    static const char* CALIBRATION_NAMESPACE;
+    
+    // Core IMU processing
     void processIMUData();
     void updateIMUData();
     void updateSystemStatus();
     
-    // Calibration functions
-    void calibrateMagnetometer();
-    void calculateHeading();
+    // BNO055 configuration
+    bool configureBNO055();
+    bool setOperationMode();
+    bool setUpdateRate();
+    bool configureCoordinateSystem();
+    
+    // Calibration management
+    void checkAndSaveCalibration();
+    bool saveCalibrationData();
+    bool loadCalibrationData();
+    void resetCalibrationData();
+    bool isCalibrationComplete() const;
     
     // Utility functions
     void printIMUInfo();
-    float normalizeAngle(float angle);
+    void printCalibrationStatus();
+    float normalizeHeading(float heading);
+    void scanI2CDevices();
+    
+    // Data conversion helpers
+    void quaternionToEuler(float qw, float qx, float qy, float qz, float& roll, float& pitch, float& yaw);
+    float quaternionToHeading(float qw, float qx, float qy, float qz);
 
 public:
     IMUTask();
@@ -45,20 +65,29 @@ public:
     void run();
     void stop();
     
-    // Status
+    // Status methods
     bool isInitialized() const { return imuInitialized; }
-    bool getCalibrated() const { return calibrated; }
+    bool isCalibrated() const;
     unsigned long getLastUpdateTime() const { return lastUpdateTime; }
     
-    // IMU data
+    // Enhanced IMU data access (modern interface)
     float getHeading() const;
     float getPitch() const;
     float getRoll() const;
     float getTemperature() const;
     
-    // Calibration
+    // Advanced data access
+    bool getQuaternion(float& w, float& x, float& y, float& z) const;
+    bool getEulerAngles(float& roll, float& pitch, float& yaw) const;
+    bool getLinearAcceleration(float& x, float& y, float& z) const;
+    bool getGravityVector(float& x, float& y, float& z) const;
+    
+    // Calibration control
     void startCalibration();
-    bool isCalibrated() const { return calibrated; }
+    BNO055CalibrationStatus getCalibrationStatus() const;
+    bool isFullyCalibrated() const;
+    void saveCurrentCalibration();
+    void resetCalibration();
 };
 
 // ============================================================================

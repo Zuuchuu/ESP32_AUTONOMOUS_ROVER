@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal
 
 from .models import (AppState, ConnectionState, NavigationState, 
-                    Waypoint, TelemetryData, AppConfig)
+                    Waypoint, TelemetryData)
 
 
 try:
@@ -59,7 +59,7 @@ class ApplicationService(QObject):
             # Max waypoints
             max_wps = self.config_manager.get("map.max_waypoints", None)
             if isinstance(max_wps, int) and max_wps > 0:
-                self.app_state._config.max_waypoints = max_wps
+                self.app_state.set_max_waypoints(max_wps)
             # Future: map defaults, telemetry intervals, etc.
         except Exception:
             # Non-fatal if configuration is unavailable
@@ -175,7 +175,7 @@ class ApplicationService(QObject):
                 self.logger.info(f"Added waypoint: {waypoint.latitude:.6f}, {waypoint.longitude:.6f}")
                 return True
             else:
-                self.app_state.emit_error(f"Maximum of {self.app_state.config.max_waypoints} waypoints allowed")
+                self.app_state.emit_error(f"Maximum of {self.app_state.max_waypoints} waypoints allowed")
                 return False
                 
         except ValueError as e:
@@ -200,7 +200,7 @@ class ApplicationService(QObject):
                 self.logger.info(f"Added manual waypoint: {latitude:.6f}, {longitude:.6f}")
                 return True
             else:
-                self.app_state.emit_error(f"Maximum of {self.app_state.config.max_waypoints} waypoints allowed")
+                self.app_state.emit_error(f"Maximum of {self.app_state.max_waypoints} waypoints allowed")
                 return False
                 
         except ValueError as e:

@@ -19,12 +19,27 @@ class TelemetryProcessor(QThread):
     Background thread for processing telemetry data from ESP32 rover.
     
     Receives and parses JSON telemetry data continuously while maintaining
-    GUI responsiveness. Compatible with ESP32 telemetry format:
+    GUI responsiveness. Compatible with both legacy and BNO055 ESP32 formats:
     
+    Legacy format:
     {
         "lat": float, "lon": float, "heading": float,
         "imu_data": {"accel": [x,y,z], "gyro": [x,y,z], "mag": [x,y,z]},
         "temperature": float, "wifi_strength": int
+    }
+    
+    BNO055 Enhanced format:
+    {
+        "lat": float, "lon": float, "heading": float,
+        "imu_data": {
+            "roll": float, "pitch": float,
+            "quaternion": [w, x, y, z],
+            "accel": [x,y,z], "gyro": [x,y,z], "mag": [x,y,z],
+            "linear_accel": [x,y,z], "gravity": [x,y,z],
+            "calibration": {"sys": 0-3, "gyro": 0-3, "accel": 0-3, "mag": 0-3},
+            "temperature": float
+        },
+        "wifi_strength": int
     }
     """
     
@@ -177,14 +192,9 @@ class TelemetryProcessor(QThread):
     
     def _validate_telemetry_structure(self, data: Dict[str, Any]) -> bool:
         """
-        Validate telemetry data structure matches ESP32 format.
+        Validate telemetry data structure matches ESP32 format (legacy or BNO055).
         
-        Expected ESP32 format:
-        {
-            "lat": float, "lon": float, "heading": float,
-            "imu_data": {"accel": [x,y,z], "gyro": [x,y,z], "mag": [x,y,z]},
-            "temperature": float, "wifi_strength": int
-        }
+        Supports both legacy and BNO055 enhanced formats.
         
         Args:
             data: Parsed JSON data
@@ -194,39 +204,130 @@ class TelemetryProcessor(QThread):
         """
         try:
             # Check required top-level fields
-            required_fields = ['lat', 'lon', 'heading', 'temperature', 'wifi_strength']
+            required_fields = ['lat', 'lon', 'heading', 'wifi_strength']
             for field in required_fields:
                 if field not in data:
+                    self.logger.debug(f"Missing required field: {field}")
                     return False
             
-            # Check numeric types
-            if not isinstance(data['lat'], (int, float)):
-                return False
-            if not isinstance(data['lon'], (int, float)):
-                return False
-            if not isinstance(data['heading'], (int, float)):
-                return False
-            if not isinstance(data['temperature'], (int, float)):
-                return False
-            if not isinstance(data['wifi_strength'], (int, float)):
-                return False
+            # Check numeric types for required fields
+            numeric_fields = ['lat', 'lon', 'heading', 'wifi_strength']
+            for field in numeric_fields:
+                if not isinstance(data[field], (int, float)):
+                    self.logger.debug(f"Invalid type for {field}: {type(data[field])}")
+                    return False
             
-            # Check IMU data structure if present
+            # Temperature can be at top level or in imu_data (backward compatibility)
+            has_temperature = ('temperature' in data and isinstance(data['temperature'], (int, float)))
+            
+            # Validate IMU data structure if present
             if 'imu_data' in data:
                 imu = data['imu_data']
-                if isinstance(imu, dict):
-                    for sensor in ['accel', 'gyro', 'mag']:
-                        if sensor in imu:
-                            sensor_data = imu[sensor]
-                            if not (isinstance(sensor_data, list) and len(sensor_data) == 3):
-                                return False
-                            for value in sensor_data:
-                                if not isinstance(value, (int, float)):
-                                    return False
+                if not isinstance(imu, dict):
+                    self.logger.debug("IMU data is not a dictionary")
+                    return False
+                
+                # Check for BNO055 enhanced fields
+                has_bno055 = any(key in imu for key in ['roll', 'pitch', 'quaternion', 'calibration'])
+                
+                if has_bno055:
+                    # Validate BNO055 enhanced structure
+                    if not self._validate_bno055_imu_data(imu):
+                        return False
+                    
+                    # Temperature should be in imu_data for BNO055
+                    if 'temperature' in imu and not isinstance(imu['temperature'], (int, float)):
+                        self.logger.debug("Invalid temperature type in IMU data")
+                        return False
+                    has_temperature = has_temperature or 'temperature' in imu
+                else:
+                    # Validate legacy IMU structure
+                    if not self._validate_legacy_imu_data(imu):
+                        return False
+            
+            # Ensure temperature is present somewhere
+            if not has_temperature:
+                self.logger.debug("Temperature not found in telemetry data")
+                return False
             
             return True
             
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as e:
+            self.logger.debug(f"Validation error: {str(e)}")
+            return False
+    
+    def _validate_legacy_imu_data(self, imu: Dict[str, Any]) -> bool:
+        """Validate legacy IMU data format."""
+        try:
+            for sensor in ['accel', 'gyro', 'mag']:
+                if sensor in imu:
+                    sensor_data = imu[sensor]
+                    if not (isinstance(sensor_data, list) and len(sensor_data) == 3):
+                        self.logger.debug(f"Invalid {sensor} data structure")
+                        return False
+                    for value in sensor_data:
+                        if not isinstance(value, (int, float)):
+                            self.logger.debug(f"Invalid {sensor} value type: {type(value)}")
+                            return False
+            return True
+        except (KeyError, TypeError, ValueError) as e:
+            self.logger.debug(f"Legacy IMU validation error: {str(e)}")
+            return False
+    
+    def _validate_bno055_imu_data(self, imu: Dict[str, Any]) -> bool:
+        """Validate BNO055 enhanced IMU data format."""
+        try:
+            # Validate orientation fields
+            orientation_fields = ['roll', 'pitch']
+            for field in orientation_fields:
+                if field in imu and not isinstance(imu[field], (int, float)):
+                    self.logger.debug(f"Invalid {field} type: {type(imu[field])}")
+                    return False
+            
+            # Validate quaternion if present
+            if 'quaternion' in imu:
+                quat = imu['quaternion']
+                if not (isinstance(quat, list) and len(quat) == 4):
+                    self.logger.debug("Invalid quaternion structure")
+                    return False
+                for value in quat:
+                    if not isinstance(value, (int, float)):
+                        self.logger.debug(f"Invalid quaternion value type: {type(value)}")
+                        return False
+            
+            # Validate enhanced sensor arrays
+            enhanced_arrays = ['linear_accel', 'gravity']
+            for field in enhanced_arrays:
+                if field in imu:
+                    array_data = imu[field]
+                    if not (isinstance(array_data, list) and len(array_data) == 3):
+                        self.logger.debug(f"Invalid {field} structure")
+                        return False
+                    for value in array_data:
+                        if not isinstance(value, (int, float)):
+                            self.logger.debug(f"Invalid {field} value type: {type(value)}")
+                            return False
+            
+            # Validate calibration status
+            if 'calibration' in imu:
+                cal = imu['calibration']
+                if not isinstance(cal, dict):
+                    self.logger.debug("Invalid calibration structure")
+                    return False
+                
+                cal_fields = ['sys', 'gyro', 'accel', 'mag']
+                for field in cal_fields:
+                    if field in cal:
+                        value = cal[field]
+                        if not (isinstance(value, int) and 0 <= value <= 3):
+                            self.logger.debug(f"Invalid calibration {field}: {value}")
+                            return False
+            
+            # Still validate legacy sensor arrays for backward compatibility
+            return self._validate_legacy_imu_data(imu)
+            
+        except (KeyError, TypeError, ValueError) as e:
+            self.logger.debug(f"BNO055 IMU validation error: {str(e)}")
             return False
     
     def stop(self):

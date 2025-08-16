@@ -40,8 +40,8 @@ class RoverClient(QObject):
         # Connection parameters
         self.current_ip = ""
         self.current_port = 80
-        self.connection_timeout = 5.0
-        self.send_timeout = 2.0
+        self.connection_timeout = 20.0
+        self.send_timeout = 5.0
     
     def _setup_logging(self) -> logging.Logger:
         """Set up logging for network operations."""
