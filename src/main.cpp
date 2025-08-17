@@ -19,6 +19,7 @@
 #include "tasks/IMUTask.h"
 #include "tasks/NavigationTask.h"
 #include "tasks/TelemetryTask.h"
+#include "tasks/ManualControlTask.h"
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -30,6 +31,7 @@ TaskHandle_t gpsTaskHandle = NULL;
 TaskHandle_t imuTaskHandle = NULL;
 TaskHandle_t navigationTaskHandle = NULL;
 TaskHandle_t telemetryTaskHandle = NULL;
+TaskHandle_t manualControlTaskHandle = NULL;
 
 // Task instances
 WiFiTask wifiTask;
@@ -37,6 +39,7 @@ GPSTask gpsTask;
 IMUTask imuTask;
 NavigationTask navigationTask;
 TelemetryTask telemetryTask;
+ManualControlTask manualControlTask;
 
 // System state
 bool systemInitialized = false;
@@ -231,6 +234,22 @@ void createTasks() {
         TASK_CORE_TELEMETRY
     );
     
+    // Create Manual Control task (higher priority than navigation)
+    xTaskCreatePinnedToCore(
+        manualControlTaskFunction,
+        "ManualControlTask",
+        TASK_STACK_SIZE_NAVIGATION,  // Use same stack size as navigation
+        &manualControlTask,
+        TASK_PRIORITY_NAVIGATION + 1,  // Higher priority than navigation
+        &manualControlTaskHandle,
+        TASK_CORE_NAVIGATION
+    );
+    
+    // Initialize manual control task
+    if (!manualControlTask.initialize()) {
+        Serial.println("ERROR: Failed to initialize manual control task");
+    }
+    
     // Give the telemetry task time to start and initialize
     vTaskDelay(pdMS_TO_TICKS(1000));
     
@@ -259,6 +278,7 @@ void startTasks() {
 // - imuTaskFunction in IMUTask.cpp
 // - navigationTaskFunction in NavigationTask.cpp
 // - telemetryTaskFunction in TelemetryTask.cpp
+// - manualControlTaskFunction in ManualControlTask.cpp
 
 // ============================================================================
 // SYSTEM MONITORING
@@ -294,6 +314,10 @@ void systemWatchdog() {
     
     if (telemetryTaskHandle && eTaskGetState(telemetryTaskHandle) == eDeleted) {
         Serial.println("ERROR: Telemetry task has been deleted unexpectedly");
+    }
+    
+    if (manualControlTaskHandle && eTaskGetState(manualControlTaskHandle) == eDeleted) {
+        Serial.println("ERROR: Manual Control task has been deleted unexpectedly");
     }
     
     // Update system uptime

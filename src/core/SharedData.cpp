@@ -18,10 +18,17 @@ SharedData::SharedData() {
     stateMutex = NULL;
     statusMutex = NULL;
     missionMutex = NULL;
+    manualControlMutex = NULL;
     
     // Initialize mission data
     segmentCount = 0;
     missionId = "";
+    
+    // Initialize manual control state
+    manualModeActive = false;
+    manualMoving = false;
+    manualDirection = "";
+    manualSpeed = 0;
 }
 
 SharedData::~SharedData() {
@@ -31,6 +38,7 @@ SharedData::~SharedData() {
     if (stateMutex) vSemaphoreDelete(stateMutex);
     if (statusMutex) vSemaphoreDelete(statusMutex);
     if (missionMutex) vSemaphoreDelete(missionMutex);
+    if (manualControlMutex) vSemaphoreDelete(manualControlMutex);
 }
 
 bool SharedData::initialize() {
@@ -41,9 +49,10 @@ bool SharedData::initialize() {
     stateMutex = xSemaphoreCreateMutex();
     statusMutex = xSemaphoreCreateMutex();
     missionMutex = xSemaphoreCreateMutex();
+    manualControlMutex = xSemaphoreCreateMutex();
     
     // Check if all mutexes were created successfully
-    if (!positionMutex || !imuMutex || !waypointsMutex || !stateMutex || !statusMutex || !missionMutex) {
+    if (!positionMutex || !imuMutex || !waypointsMutex || !stateMutex || !statusMutex || !missionMutex || !manualControlMutex) {
         Serial.println("ERROR: Failed to create mutexes");
         return false;
     }
@@ -394,4 +403,41 @@ void SharedData::updateMissionProgress(double progress, int segmentIndex, double
         roverState.missionElapsedTime = millis() - roverState.missionStartTime;
         xSemaphoreGive(stateMutex);
     }
+}
+
+// ============================================================================
+// MANUAL CONTROL METHODS IMPLEMENTATION
+// ============================================================================
+
+bool SharedData::getManualControlState(bool& active, bool& moving, String& direction, int& speed) {
+    if (xSemaphoreTake(manualControlMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        active = manualModeActive;
+        moving = manualMoving;
+        direction = manualDirection;
+        speed = manualSpeed;
+        xSemaphoreGive(manualControlMutex);
+        return true;
+    }
+    return false;
+}
+
+bool SharedData::setManualControlState(bool active, bool moving, const String& direction, int speed) {
+    if (xSemaphoreTake(manualControlMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        manualModeActive = active;
+        manualMoving = moving;
+        manualDirection = direction;
+        manualSpeed = speed;
+        xSemaphoreGive(manualControlMutex);
+        return true;
+    }
+    return false;
+}
+
+bool SharedData::isManualModeActive() {
+    bool active = false;
+    if (xSemaphoreTake(manualControlMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        active = manualModeActive;
+        xSemaphoreGive(manualControlMutex);
+    }
+    return active;
 }

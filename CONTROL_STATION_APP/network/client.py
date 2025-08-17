@@ -256,3 +256,34 @@ class RoverClient(QObject):
         """Send resume mission command to the rover."""
         command = {"command": "resume_mission"}
         return self._send_command(command)
+    
+    # ============================================================================
+    # MANUAL CONTROL METHODS
+    # ============================================================================
+    
+    def enable_manual_mode(self) -> Tuple[bool, str]:
+        """Enable manual control mode on the rover."""
+        return self.send_command("enable_manual")
+    
+    def disable_manual_mode(self) -> Tuple[bool, str]:
+        """Disable manual control mode on the rover."""
+        return self.send_command("disable_manual")
+    
+    def send_manual_move(self, direction: str, speed: int) -> Tuple[bool, str]:
+        """
+        Send manual movement command to the rover.
+        
+        Args:
+            direction: Movement direction ("forward", "backward", "left", "right", "stop")
+            speed: Speed percentage (0-100)
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        if direction not in ["forward", "backward", "left", "right", "stop"]:
+            return False, f"Invalid direction: {direction}"
+        
+        if not 0 <= speed <= 100:
+            return False, "Speed must be between 0 and 100"
+        
+        return self.send_command("manual_move", direction=direction, speed=speed)

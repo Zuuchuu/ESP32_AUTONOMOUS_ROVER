@@ -32,6 +32,11 @@ private:
     void processAbortMission();
     void processResumeMission();
     
+    // Manual control commands
+    void processEnableManual();
+    void processDisableManual();
+    void processManualMove();
+    
     // Response sending
     void sendResponse(const String& response);
     void sendError(const String& error);

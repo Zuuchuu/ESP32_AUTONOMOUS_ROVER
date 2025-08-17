@@ -118,6 +118,11 @@ void WiFiTask::processCommand(const String& command) {
         }
         if (cmd == "get_status") { sendStatus(); return; }
 
+        // Manual control commands
+        if (cmd == "enable_manual") { processEnableManual(); return; }
+        if (cmd == "disable_manual") { processDisableManual(); return; }
+        if (cmd == "manual_move") { processManualMove(); return; }
+
         sendError("Unknown command: " + cmd);
         return;
     }
@@ -353,6 +358,69 @@ void WiFiTask::sendStatus() {
     String response;
     serializeJson(jsonDoc, response);
     sendResponse(response);
+}
+
+// ============================================================================
+// MANUAL CONTROL COMMAND PROCESSING
+// ============================================================================
+
+void WiFiTask::processEnableManual() {
+    Serial.println("[WiFi] Enabling manual control mode");
+    
+    // Update shared data
+    if (sharedData.setManualControlState(true, false, "", 0)) {
+        sendResponse("{\"status\":\"success\",\"message\":\"Manual control mode enabled\"}");
+        Serial.println("[WiFi] Manual control mode enabled successfully");
+    } else {
+        sendError("Failed to enable manual control mode");
+    }
+}
+
+void WiFiTask::processDisableManual() {
+    Serial.println("[WiFi] Disabling manual control mode");
+    
+    // Update shared data
+    if (sharedData.setManualControlState(false, false, "", 0)) {
+        sendResponse("{\"status\":\"success\",\"message\":\"Manual control mode disabled\"}");
+        Serial.println("[WiFi] Manual control mode disabled successfully");
+    } else {
+        sendError("Failed to disable manual control mode");
+    }
+}
+
+void WiFiTask::processManualMove() {
+    // Validate required fields
+    if (!jsonDoc["direction"].is<const char*>() || !jsonDoc["speed"].is<int>()) {
+        sendError("Missing direction or speed field");
+        return;
+    }
+    
+    String direction = jsonDoc["direction"].as<const char*>();
+    int speed = jsonDoc["speed"].as<int>();
+    
+    // Validate direction
+    if (direction != "forward" && direction != "backward" && 
+        direction != "left" && direction != "right" && direction != "stop") {
+        sendError("Invalid direction: " + direction);
+        return;
+    }
+    
+    // Validate speed (0-100 for percentage)
+    if (speed < 0 || speed > 100) {
+        sendError("Speed must be between 0 and 100");
+        return;
+    }
+    
+    Serial.printf("[WiFi] Manual move command: %s at speed %d\n", direction.c_str(), speed);
+    
+    // Update shared data with manual control state
+    if (sharedData.setManualControlState(true, (direction != "stop"), direction, speed)) {
+        String response = "{\"status\":\"success\",\"message\":\"Manual move command executed: " + direction + " at speed " + String(speed) + "%\"}";
+        sendResponse(response);
+        Serial.println("[WiFi] Manual move command processed successfully");
+    } else {
+        sendError("Failed to process manual move command");
+    }
 }
 
 // ============================================================================

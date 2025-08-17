@@ -375,3 +375,63 @@ class ApplicationService(QObject):
     def get_rover_state(self):
         """Get complete rover state."""
         return self.app_state.rover_state
+    
+    def is_connected(self) -> bool:
+        """Check if connected to rover."""
+        return (self.network_client is not None and 
+                self.network_client.is_connected())
+    
+    # ============================================================================
+    # MANUAL CONTROL METHODS
+    # ============================================================================
+    
+    def is_manual_mode_enabled(self) -> bool:
+        """Check if manual control mode is currently enabled."""
+        # This would need to be tracked in the app state
+        # For now, we'll assume it's enabled if we're connected
+        return self.is_connected()
+    
+    def enable_manual_mode(self) -> Tuple[bool, str]:
+        """Enable manual control mode on the rover."""
+        if not self.is_connected():
+            return False, "Not connected to rover"
+        
+        try:
+            success, message = self.network_client.enable_manual_mode()
+            if success:
+                self.logger.info("Manual control mode enabled")
+            return success, message
+        except Exception as e:
+            error_msg = f"Failed to enable manual control: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
+    
+    def disable_manual_mode(self) -> Tuple[bool, str]:
+        """Disable manual control mode on the rover."""
+        if not self.is_connected():
+            return False, "Not connected to rover"
+        
+        try:
+            success, message = self.network_client.disable_manual_mode()
+            if success:
+                self.logger.info("Manual control mode disabled")
+            return success, message
+        except Exception as e:
+            error_msg = f"Failed to disable manual control: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg
+    
+    def send_manual_move(self, direction: str, speed: int) -> Tuple[bool, str]:
+        """Send manual movement command to the rover."""
+        if not self.is_connected():
+            return False, "Not connected to rover"
+        
+        try:
+            success, message = self.network_client.send_manual_move(direction, speed)
+            if success:
+                self.logger.debug(f"Manual move command sent: {direction} at {speed}%")
+            return success, message
+        except Exception as e:
+            error_msg = f"Failed to send manual move command: {str(e)}"
+            self.logger.error(error_msg)
+            return False, error_msg

@@ -50,7 +50,13 @@ bool NavigationTask::initialize() {
 
 void NavigationTask::run() {
     while (true) {
-        if (isNavigating) {
+        // Check if manual mode is active - if so, pause navigation
+        if (sharedData.isManualModeActive()) {
+            if (isNavigating) {
+                Serial.println("[Navigation] Manual mode active - pausing navigation");
+                stopNavigation();
+            }
+        } else if (isNavigating) {
             processNavigation();
         }
         

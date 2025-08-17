@@ -167,6 +167,12 @@ class TelemetryProcessor(QThread):
             # Parse JSON
             telemetry = json.loads(line)
             
+            # Check if this is a command response (not actual telemetry)
+            if self._is_command_response(telemetry):
+                # Log command responses but don't treat as telemetry
+                self._log_command_response(telemetry)
+                return
+            
             # Validate basic structure for ESP32 compatibility
             if self._validate_telemetry_structure(telemetry):
                 self.messages_received += 1
@@ -189,6 +195,70 @@ class TelemetryProcessor(QThread):
             self.parsing_errors += 1
             self.logger.error(f"Error processing telemetry line: {str(e)}")
             self.parsing_error.emit(f"Processing error: {str(e)}")
+    
+    def _is_command_response(self, data: Dict[str, Any]) -> bool:
+        """
+        Check if the JSON data is a command response rather than telemetry data.
+        
+        Command responses have this structure:
+        {"status": "success|error", "message": "..."}
+        
+        Args:
+            data: Parsed JSON data
+            
+        Returns:
+            True if this is a command response
+        """
+        try:
+            # Command responses have status and message fields
+            if 'status' in data and 'message' in data:
+                # Check if it's missing telemetry-specific fields
+                telemetry_fields = ['lat', 'lon', 'heading', 'wifi_strength']
+                has_telemetry_fields = any(field in data for field in telemetry_fields)
+                
+                # If it has status/message but no telemetry fields, it's a command response
+                if not has_telemetry_fields:
+                    return True
+                
+                # Additional check: if status is success/error and message contains command-related text
+                status = data.get('status', '').lower()
+                message = data.get('message', '').lower()
+                
+                if status in ['success', 'error'] and any(keyword in message for keyword in [
+                    'manual', 'command', 'enabled', 'disabled', 'executed', 'started', 'stopped'
+                ]):
+                    return True
+                
+                # Also catch connection messages like "Rover ready"
+                if status == 'connected' or 'ready' in message:
+                    return True
+            
+            return False
+            
+        except (KeyError, TypeError, ValueError):
+            return False
+    
+    def _log_command_response(self, data: Dict[str, Any]):
+        """
+        Log command responses in a clean, informative way.
+        
+        Args:
+            data: Command response data
+        """
+        try:
+            status = data.get('status', 'unknown')
+            message = data.get('message', 'No message')
+            
+            # Use appropriate log level based on status
+            if status == 'success':
+                self.logger.info(f"Command successful: {message}")
+            elif status == 'error':
+                self.logger.warning(f"Command failed: {message}")
+            else:
+                self.logger.info(f"Command response ({status}): {message}")
+                
+        except (KeyError, TypeError, ValueError) as e:
+            self.logger.debug(f"Error logging command response: {str(e)}")
     
     def _validate_telemetry_structure(self, data: Dict[str, Any]) -> bool:
         """

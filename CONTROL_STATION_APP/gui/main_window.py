@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import (QMainWindow, QSplitter, QVBoxLayout,
                               QLabel, QFrame, QGridLayout, QHBoxLayout, QPushButton, QCheckBox, QDoubleSpinBox, QSlider, QSizePolicy,
                               QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QAbstractItemView)
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtGui import QIcon, QFont, QKeySequence
+from PyQt5.QtWidgets import QShortcut
 
 from core.services import ApplicationService
 from core.models import ConnectionState, NavigationState, MissionPlan, MissionProgress, MissionAnalytics, Waypoint, TelemetryData
@@ -49,6 +50,9 @@ class MainWindow(QMainWindow):
         # Apply initial styling
         self.setStyleSheet(self.style_manager.get_main_stylesheet())
         self.setFont(self.style_manager.get_application_font())
+        
+        # Setup keyboard shortcuts for manual control
+        self.setup_keyboard_shortcuts()
 
     def _create_slider(self, min_val: float, max_val: float, default: float, step: float = 0.1) -> QSlider:
         slider = QSlider(Qt.Horizontal)
@@ -120,7 +124,7 @@ class MainWindow(QMainWindow):
         self.map_widget = MapWidget()
     
     def create_control_container(self) -> QWidget:
-        """Create the container for all control panels using redesigned workflow-oriented interface."""
+        """Create the container for all control panels using tab-based interface."""
         container = QWidget()
         # Make panel resizable with fixed reasonable constraints
         container.setMinimumWidth(320)  # Minimum width to show content
@@ -135,24 +139,256 @@ class MainWindow(QMainWindow):
         self.top_status_container = self.create_top_status_bars()
         main_layout.addWidget(self.top_status_container)
         
-        # Direct section placement - all sections fit equally in vertical space
-        self.collapsible_waypoint_section = self.create_collapsible_waypoint_section()
-        main_layout.addWidget(self.collapsible_waypoint_section)
-        
-        self.mission_setup_section = self.create_mission_setup_section()
-        main_layout.addWidget(self.mission_setup_section)
-        
-        self.mission_control_section = self.create_mission_control_section()
-        main_layout.addWidget(self.mission_control_section)
-        
-        self.mission_progress_section = self.create_mission_progress_section()
-        main_layout.addWidget(self.mission_progress_section)
-        
-        # Let mission progress take remaining space; keep setup/control compact
-        main_layout.setStretchFactor(self.mission_progress_section, 1)
+        # Create tab widget for Mission and Manual control
+        self.control_tabs = self.create_control_tabs()
+        main_layout.addWidget(self.control_tabs)
         
         container.setLayout(main_layout)
         return container
+    
+    def create_control_tabs(self) -> QWidget:
+        """Create tab widget with Mission and Manual control tabs."""
+        from PyQt5.QtWidgets import QTabWidget
+        
+        tab_widget = QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 0px solid #dee2e6;
+                border-radius: 6px;
+                background: white;
+            }
+            QTabWidget::tab-bar {
+                alignment: center;
+            }
+            QTabBar::tab {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-bottom: none;
+                border-radius: 6px 6px 0px 0px;
+                padding: 8px 16px;
+                margin-right: 2px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                border-bottom: 1px solid white;
+            }
+            QTabBar::tab:hover {
+                background: #e9ecef;
+            }
+        """)
+        
+        # Mission tab
+        self.mission_tab = self.create_mission_tab()
+        tab_widget.addTab(self.mission_tab, "Mission")
+        
+        # Manual tab
+        self.manual_tab = self.create_manual_tab()
+        tab_widget.addTab(self.manual_tab, "Manual")
+        
+        return tab_widget
+    
+    def create_mission_tab(self) -> QWidget:
+        """Create the mission control tab with all existing mission functionality."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(2)
+        
+        # Add all existing mission sections
+        self.collapsible_waypoint_section = self.create_collapsible_waypoint_section()
+        layout.addWidget(self.collapsible_waypoint_section)
+        
+        self.mission_setup_section = self.create_mission_setup_section()
+        layout.addWidget(self.mission_setup_section)
+        
+        self.mission_control_section = self.create_mission_control_section()
+        layout.addWidget(self.mission_control_section)
+        
+        self.mission_progress_section = self.create_mission_progress_section()
+        layout.addWidget(self.mission_progress_section)
+        
+        # Let mission progress take remaining space
+        layout.setStretchFactor(self.mission_progress_section, 1)
+        
+        tab.setLayout(layout)
+        return tab
+    
+    def create_manual_tab(self) -> QWidget:
+        """Create the manual control tab with keypad interface."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+        
+        # Manual control status
+        self.manual_status_label = QLabel("Manual Control: Disabled")
+        self.manual_status_label.setStyleSheet("""
+            QLabel {
+                font-size: 14px;
+                font-weight: bold;
+                color: #6c757d;
+                padding: 10px;
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+            }
+        """)
+        self.manual_status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.manual_status_label)
+        
+        # Manual control enable/disable
+        manual_control_layout = QHBoxLayout()
+        self.enable_manual_btn = QPushButton("Enable Manual Control")
+        self.enable_manual_btn.setStyleSheet("""
+            QPushButton {
+                background: #28a745;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #218838;
+            }
+            QPushButton:pressed {
+                background: #1e7e34;
+            }
+        """)
+        self.disable_manual_btn = QPushButton("Disable Manual Control")
+        self.disable_manual_btn.setStyleSheet("""
+            QPushButton {
+                background: #dc3545;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #c82333;
+            }
+            QPushButton:pressed {
+                background: #bd2130;
+            }
+        """)
+        self.disable_manual_btn.setEnabled(False)
+        
+        manual_control_layout.addWidget(self.enable_manual_btn)
+        manual_control_layout.addWidget(self.disable_manual_btn)
+        layout.addLayout(manual_control_layout)
+        
+        # Speed control
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("Speed:"))
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setMinimum(0)
+        self.speed_slider.setMaximum(100)
+        self.speed_slider.setValue(75)
+        self.speed_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #e9ecef;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #007bff;
+                border: 1px solid #0056b3;
+                width: 18px;
+                height: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
+        """)
+        speed_layout.addWidget(self.speed_slider)
+        self.speed_label = QLabel("75%")
+        self.speed_label.setStyleSheet("font-weight: bold; color: #007bff;")
+        self.speed_label.setFixedWidth(40)
+        speed_layout.addWidget(self.speed_label)
+        layout.addLayout(speed_layout)
+        
+        # Connect speed slider
+        self.speed_slider.valueChanged.connect(self.update_speed_label)
+        
+        # Keypad grid (5-button layout)
+        keypad_layout = QGridLayout()
+        keypad_layout.setSpacing(10)
+        
+        # Create directional buttons
+        self.forward_btn = self.create_direction_button("⬆️", "Forward")
+        self.backward_btn = self.create_direction_button("⬇️", "Backward")
+        self.left_btn = self.create_direction_button("⬅️", "Left")
+        self.right_btn = self.create_direction_button("➡️", "Right")
+        self.stop_btn = self.create_direction_button("⏹️", "Stop")
+        
+        # Position buttons in grid
+        keypad_layout.addWidget(self.forward_btn, 0, 1)
+        keypad_layout.addWidget(self.left_btn, 1, 0)
+        keypad_layout.addWidget(self.stop_btn, 1, 1)
+        keypad_layout.addWidget(self.right_btn, 1, 2)
+        keypad_layout.addWidget(self.backward_btn, 2, 1)
+        
+        layout.addLayout(keypad_layout)
+        
+        # Add stretch to push keypad to top
+        layout.addStretch()
+        
+        # Connect button signals
+        self.connect_manual_control_signals()
+        
+        tab.setLayout(layout)
+        return tab
+    
+    def create_direction_button(self, symbol: str, tooltip: str) -> QPushButton:
+        """Create a styled direction button for manual control."""
+        button = QPushButton(symbol)
+        button.setToolTip(tooltip)
+        button.setFixedSize(80, 80)
+        button.setStyleSheet("""
+            QPushButton {
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 40px;
+                font-size: 24px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #0056b3;
+            }
+            QPushButton:pressed {
+                background: #004085;
+            }
+            QPushButton:disabled {
+                background: #6c757d;
+                color: #adb5bd;
+            }
+        """)
+        return button
+    
+    def connect_manual_control_signals(self):
+        """Connect all manual control button signals."""
+        # Enable/disable manual control
+        self.enable_manual_btn.clicked.connect(self.enable_manual_control)
+        self.disable_manual_btn.clicked.connect(self.disable_manual_control)
+        
+        # Direction buttons with press/release for continuous movement
+        self.forward_btn.pressed.connect(lambda: self.start_manual_movement("forward"))
+        self.forward_btn.released.connect(lambda: self.stop_manual_movement())
+        
+        self.backward_btn.pressed.connect(lambda: self.start_manual_movement("backward"))
+        self.backward_btn.released.connect(lambda: self.stop_manual_movement())
+        
+        self.left_btn.pressed.connect(lambda: self.start_manual_movement("left"))
+        self.left_btn.released.connect(lambda: self.stop_manual_movement())
+        
+        self.right_btn.pressed.connect(lambda: self.start_manual_movement("right"))
+        self.right_btn.released.connect(lambda: self.stop_manual_movement())
+        
+        # Stop button (immediate)
+        self.stop_btn.clicked.connect(lambda: self.send_manual_command("stop", 0))
     
     def create_top_status_bars(self) -> QWidget:
         """Create two-row top status bars: connectivity row and sensors row."""
@@ -190,7 +426,7 @@ class MainWindow(QMainWindow):
         # IP input
         self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("IP Address")
-        self.ip_input.setText("192.168.1.100")
+        self.ip_input.setText("192.168.1.23")
         self.ip_input.setFixedWidth(110)
         self.ip_input.setStyleSheet("QLineEdit{border:1px solid #ced4da;border-radius:4px;padding:3px 6px;font-size:10px;}")
         self.connect_status_bar.addPermanentWidget(self.ip_input)
@@ -1952,6 +2188,122 @@ Max deviation: {stats['max_deviation_m']:.1f}m"""
 
         # Clear mission plan summary in setup section
         self.clear_mission_plan_summary()
+
+    # ============================================================================
+    # MANUAL CONTROL METHODS
+    # ============================================================================
+    
+    def enable_manual_control(self):
+        """Enable manual control mode on the rover."""
+        if not self.app_service.is_connected():
+            QMessageBox.warning(self, "Connection Required", "Please connect to the rover first.")
+            return
+        
+        success, message = self.app_service.enable_manual_mode()
+        if success:
+            self.manual_status_label.setText("Manual Control: Enabled")
+            self.manual_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #28a745;
+                    padding: 10px;
+                    background: #d4edda;
+                    border: 1px solid #c3e6cb;
+                    border-radius: 6px;
+                }
+            """)
+            self.enable_manual_btn.setEnabled(False)
+            self.disable_manual_btn.setEnabled(True)
+            self.update_status_message("Manual control mode enabled")
+        else:
+            QMessageBox.warning(self, "Manual Control Error", f"Failed to enable manual control: {message}")
+    
+    def disable_manual_control(self):
+        """Disable manual control mode on the rover."""
+        success, message = self.app_service.disable_manual_mode()
+        if success:
+            self.manual_status_label.setText("Manual Control: Disabled")
+            self.manual_status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #6c757d;
+                    padding: 10px;
+                    background: #f8f9fa;
+                    border: 1px solid #dee2e6;
+                    border-radius: 6px;
+                }
+            """)
+            self.enable_manual_btn.setEnabled(True)
+            self.disable_manual_btn.setEnabled(False)
+            self.update_status_message("Manual control mode disabled")
+        else:
+            QMessageBox.warning(self, "Manual Control Error", f"Failed to disable manual control: {message}")
+    
+    def start_manual_movement(self, direction: str):
+        """Start continuous manual movement in the specified direction."""
+        if not self.app_service.is_manual_mode_enabled():
+            return
+        
+        speed = self.speed_slider.value()
+        success, message = self.app_service.send_manual_move(direction, speed)
+        if not success:
+            self.update_status_message(f"Manual control error: {message}")
+    
+    def stop_manual_movement(self):
+        """Stop manual movement."""
+        if not self.app_service.is_manual_mode_enabled():
+            return
+        
+        success, message = self.app_service.send_manual_move("stop", 0)
+        if not success:
+            self.update_status_message(f"Manual control error: {message}")
+    
+    def send_manual_command(self, direction: str, speed: int):
+        """Send a manual movement command to the rover."""
+        if not self.app_service.is_manual_mode_enabled():
+            return
+        
+        success, message = self.app_service.send_manual_move(direction, speed)
+        if not success:
+            self.update_status_message(f"Manual control error: {message}")
+    
+    def update_speed_label(self, value: int):
+        """Update the speed label when slider changes."""
+        self.speed_label.setText(f"{value}%")
+    
+    def setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts for manual control."""
+        # WASD keys
+        self.forward_shortcut = QShortcut(QKeySequence("W"), self)
+        self.forward_shortcut.activated.connect(lambda: self.start_manual_movement("forward"))
+        
+        self.backward_shortcut = QShortcut(QKeySequence("S"), self)
+        self.backward_shortcut.activated.connect(lambda: self.start_manual_movement("backward"))
+        
+        self.left_shortcut = QShortcut(QKeySequence("A"), self)
+        self.left_shortcut.activated.connect(lambda: self.start_manual_movement("left"))
+        
+        self.right_shortcut = QShortcut(QKeySequence("D"), self)
+        self.right_shortcut.activated.connect(lambda: self.start_manual_movement("right"))
+        
+        # Arrow keys
+        self.up_shortcut = QShortcut(QKeySequence(Qt.Key_Up), self)
+        self.up_shortcut.activated.connect(lambda: self.start_manual_movement("forward"))
+        
+        self.down_shortcut = QShortcut(QKeySequence(Qt.Key_Down), self)
+        self.down_shortcut.activated.connect(lambda: self.start_manual_movement("backward"))
+        
+        self.left_arrow_shortcut = QShortcut(QKeySequence(Qt.Key_Left), self)
+        self.left_arrow_shortcut.activated.connect(lambda: self.start_manual_movement("left"))
+        
+        self.right_arrow_shortcut = QShortcut(QKeySequence(Qt.Key_Right), self)
+        self.right_arrow_shortcut.activated.connect(lambda: self.start_manual_movement("right"))
+        
+        # Space bar for stop
+        self.stop_shortcut = QShortcut(QKeySequence(Qt.Key_Space), self)
+        self.stop_shortcut.activated.connect(lambda: self.send_manual_command("stop", 0))
 
     # Mission plan summary helpers
     def _format_distance_m(self, meters: float) -> str:

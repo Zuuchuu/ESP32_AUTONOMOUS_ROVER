@@ -179,6 +179,7 @@ private:
     SemaphoreHandle_t stateMutex;
     SemaphoreHandle_t statusMutex;
     SemaphoreHandle_t missionMutex;
+    SemaphoreHandle_t manualControlMutex;
     
     // Shared data structures
     GPSPosition currentPosition;
@@ -186,6 +187,12 @@ private:
     Waypoint waypoints[MAX_WAYPOINTS];
     RoverState roverState;
     SystemStatus systemStatus;
+    
+    // Manual control state
+    bool manualModeActive;
+    bool manualMoving;
+    String manualDirection;
+    int manualSpeed;
     
     // Enhanced mission data
     PathSegment pathSegments[MAX_WAYPOINTS - 1];  // N-1 segments for N waypoints
@@ -229,6 +236,11 @@ public:
     // Mission data methods
     void setMissionParameters(const MissionParameters& params);
     MissionParameters getMissionParameters();
+    
+    // Manual control methods
+    bool getManualControlState(bool& active, bool& moving, String& direction, int& speed);
+    bool setManualControlState(bool active, bool moving, const String& direction, int speed);
+    bool isManualModeActive();
     
     void setPathSegments(const PathSegment* segments, int count);
     int getPathSegmentCount();
