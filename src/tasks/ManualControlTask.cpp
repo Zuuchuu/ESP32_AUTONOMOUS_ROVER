@@ -22,7 +22,7 @@ ManualControlTask::~ManualControlTask() {
 bool ManualControlTask::initialize() {
     Serial.println("[ManualControl] Initializing manual control system...");
     
-    // Initialize motor controller
+    // Global Motor controller already initialized in main, but safe to call
     if (!motorController.initialize()) {
         Serial.println("[ManualControl] Error: Failed to initialize motor controller");
         return false;
@@ -45,6 +45,20 @@ bool ManualControlTask::initialize() {
 
 void ManualControlTask::run() {
     while (true) {
+        // Safety Check (TOF from SharedData)
+        RoverState currentState;
+        if (sharedData.getRoverState(currentState)) {
+             float dist = currentState.frontObstacleDistance;
+             bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
+             
+             if (obstacleDetected) {
+                 if (isMoving && currentDirection == "forward") {
+                     Serial.println("[ManualControl] PROXIMITY ALERT! Stopping.");
+                     stopAllMovement();
+                 }
+             }
+        }
+
         // Check shared data for manual control commands
         bool manualActive, manualMoving;
         String manualDirection;

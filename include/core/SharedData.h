@@ -145,12 +145,21 @@ struct RoverState {
     unsigned long missionElapsedTime;
     double estimatedTimeRemaining;   // seconds
     
+    // Hardware Telemetry
+    float frontObstacleDistance;     // cm
+    long leftEncoderCount;
+    long rightEncoderCount;
+    float leftMotorRPM;
+    float rightMotorRPM;
+    
     RoverState() : isNavigating(false), isConnected(false), 
                    currentWaypointIndex(0), totalWaypoints(0), 
                    currentSpeed(0.0), lastUpdateTime(0), missionState(MISSION_IDLE),
                    currentSegmentIndex(0), totalSegments(0), missionProgress(0.0),
                    distanceToTarget(0.0), totalDistance(0.0), crossTrackError(0.0),
-                   missionStartTime(0), missionElapsedTime(0), estimatedTimeRemaining(0.0) {}
+                   missionStartTime(0), missionElapsedTime(0), estimatedTimeRemaining(0.0),
+                   frontObstacleDistance(-1.0), leftEncoderCount(0), rightEncoderCount(0),
+                   leftMotorRPM(0.0), rightMotorRPM(0.0) {}
 };
 
 // System Status structure

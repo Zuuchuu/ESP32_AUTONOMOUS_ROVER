@@ -49,7 +49,44 @@ bool NavigationTask::initialize() {
 // ============================================================================
 
 void NavigationTask::run() {
+    unsigned long lastPIDUpdate = 0;
+    const unsigned long pidInterval = 20; // 50Hz
+
     while (true) {
+        // High frequency loop
+        unsigned long now = millis();
+
+        // 1. Safety Check (TOF from SharedData)
+        RoverState currentState;
+        if (sharedData.getRoverState(currentState)) {
+             float dist = currentState.frontObstacleDistance;
+             bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
+             
+             if (obstacleDetected) {
+                if (isNavigating) {
+                    Serial.println("[Navigation] OBSTACLE DETECTED! Emergency Stop!");
+                    stopNavigation();
+                }
+             }
+        }
+        
+        // 2. Update Motor PID (if navigating or if manual mode needs it, but manual mode has its own task)
+        // Actually, MotorController is global. We should update it here if THIS task owns it.
+        // But ManualControlTask also runs.
+        // We should explicitly update it ONLY if we are active? 
+        // Or let a separate ControlTask do it?
+        // Current design: Tasks run loops.
+        // If Manual mode is active, this loop pauses navigation logic.
+        // Checking TOF here protects navigation.
+        
+        // Update PID if navigating
+        if (isNavigating) {
+             if (now - lastPIDUpdate >= pidInterval) {
+                 motorController.update(); 
+                 lastPIDUpdate = now;
+             }
+        }
+
         // Check if manual mode is active - if so, pause navigation
         if (sharedData.isManualModeActive()) {
             if (isNavigating) {
@@ -60,8 +97,8 @@ void NavigationTask::run() {
             processNavigation();
         }
         
-        // Update at specified interval
-        vTaskDelay(pdMS_TO_TICKS(navigationUpdateInterval));
+        // Update at specified interval (Navigation Logic is slower, e.g. GPS)
+        vTaskDelay(pdMS_TO_TICKS(10)); // Faster tick to allow PID updates
     }
 }
 

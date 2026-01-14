@@ -22,9 +22,6 @@ private:
     String currentDirection;
     int currentSpeed;
     
-    // Motor control
-    MotorController motorController;
-    
     // Timing and safety
     unsigned long lastCommandTime;
     unsigned long commandTimeout;

@@ -36,7 +36,7 @@ bool IMUTask::initialize() {
     Serial.println("Initializing BNO055 IMU task...");
     
     // Initialize I2C
-    Wire.begin(PIN_IMU_SDA, PIN_IMU_SCL);
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
     Wire.setClock(400000); // 400kHz for BNO055 (faster than GY-87)
     
     delay(100); // Allow I2C to stabilize

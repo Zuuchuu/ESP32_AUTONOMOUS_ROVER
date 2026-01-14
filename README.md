@@ -79,28 +79,35 @@ The ESP32 Autonomous Rover is a **production-ready autonomous robotics system** 
 │                         │   WiFi Task     │                                     │
 │                         │ (TCP Server)    │                                     │
 │                         └─────────────────┘                                     │
+│                                                                                 │
 │                                ESP32 ROVER FIRMWARE                             │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │   GPS Task      │  │   BNO055 IMU    │  │   Navigation    │                  │
-│  │  (Position)     │  │     Task        │  │     Task        │                  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘                  │
-│           │                     │                     │                         │
-│           └─────────────────────┼─────────────────────┘                         │
-│                                 │                                               │
-│                        ┌─────────────────┐                                      │
-│                        │  SharedData     │                                      │
-│                        │ (Thread-Safe)   │                                      │
-│                        └─────────────────┘                                      │
-│                                 │                                               │
-│                        ┌─────────────────┐                                      │
-│                        │  Motor Control  │                                      │
-│                        │   (TB6612FNG)   │                                      │
-│                        └─────────────────┘                                      │
-│                                 │                                               │
-│                        ┌─────────────────┐                                      │
-│                        │ Manual Control  │                                      │
-│                        │     Task        │                                      │
-│                        └─────────────────┘                                      │
+│                                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │  GPS Task    │  │  IMU Task    │  │  TOF Task    │  │ Encoder Task │         │
+│  │ (Position)   │  │  (BNO055)    │  │  (VL53L0X)   │  │ (Odometry)   │         │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘         │
+│         │                 │                 │                 │                 │
+│         └─────────────────┴────────┬────────┴─────────────────┘                 │
+│                                    │                                            │
+│                           ┌────────┴────────┐                                   │
+│                           │   SharedData    │                                   │
+│                           │ (Thread-Safe)   │                                   │
+│                           └────────┬────────┘                                   │
+│                                    │                                            │
+│         ┌──────────────────────────┼──────────────────────────┐                 │
+│         │                          │                          │                 │
+│  ┌──────┴───────┐         ┌────────┴────────┐        ┌────────┴───────┐         │
+│  │ Navigation   │         │ Motor Control   │        │ Manual Control │         │
+│  │    Task      │◄───────►│ (PID + Encoder) │◄──────►│     Task       │         │
+│  └──────────────┘         └────────┬────────┘        └────────────────┘         │
+│                                    │                                            │
+│                           ┌────────┴────────┐                                   │
+│                           │  Display Task   │                                   │
+│                           │   (SSD1306)     │                                   │
+│                           └─────────────────┘                                   │
+│                                                                                 │
+│  Hardware Layer:  [TB6612FNG]──[N20 Motors w/ Encoders]                         │
+│                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -114,8 +121,10 @@ The ESP32 Autonomous Rover is a **production-ready autonomous robotics system** 
 | **Microcontroller** | ESP32 30-pin DevKit | - | Main processing unit |
 | **IMU Sensor** | BNO055 9-DOF | I2C | Orientation, acceleration, sensor fusion |
 | **GPS Module** | u-blox M10 | UART | Position and navigation |
+| **OLED Display** | SSD1306 0.96" | I2C | Local status display |
+| **TOF Sensor** | VL53L0X | I2C | Obstacle detection, emergency stop |
 | **Motor Driver** | TB6612FNG | PWM/GPIO | Motor control and direction |
-| **Motors** | N20 3.7V DC (x2) | - | Differential drive system |
+| **Motors** | N20 3.7V DC with Encoders (x2) | GPIO + PWM | Differential drive, closed-loop PID |
 | **Power Supply** | LiPo 3.7V+ | - | System power |
 
 ### Pin Configuration
@@ -124,17 +133,26 @@ ESP32 GPIO Connections:
 ├── GPS Module (u-blox M10)
 │   ├── TX → GPIO16 (RX)
 │   └── RX → GPIO17 (TX)
-├── BNO055 IMU (I2C)
+├── I2C Bus (Shared: IMU, OLED, TOF)
 │   ├── SDA → GPIO21
 │   └── SCL → GPIO22
 ├── Left Motor (TB6612FNG)
-│   ├── PWM → GPIO12
-│   ├── IN1 → GPIO27
-│   └── IN2 → GPIO14
-└── Right Motor (TB6612FNG)
-    ├── PWM → GPIO32
-    ├── IN1 → GPIO33
-    └── IN2 → GPIO25
+│   ├── PWM → GPIO14
+│   ├── IN1 → GPIO26
+│   └── IN2 → GPIO27
+├── Right Motor (TB6612FNG)
+│   ├── PWM → GPIO32
+│   ├── IN1 → GPIO25
+│   └── IN2 → GPIO33
+├── Left Encoder
+│   ├── CH_A → GPIO18
+│   └── CH_B → GPIO19
+├── Right Encoder
+│   ├── CH_A → GPIO5
+│   └── CH_B → GPIO4
+└── Status LEDs
+    ├── WiFi → GPIO23
+    └── GPS  → GPIO13
 ```
 
 ### Power Requirements
@@ -150,10 +168,13 @@ ESP32 GPIO Connections:
 ### ESP32 Firmware Architecture
 ```
 FreeRTOS Multi-Task System:
-├── WiFi Task (Core 0, Priority 1)     - TCP server, command processing
-├── GPS Task (Core 0, Priority 2)      - NMEA parsing, position updates  
-├── IMU Task (Core 0, Priority 2)      - BNO055 data, sensor fusion
-├── Navigation Task (Core 1, Priority 3) - Path planning, motor control
+├── WiFi Task (Core 0, Priority 1)       - TCP server, command processing
+├── GPS Task (Core 0, Priority 2)        - NMEA parsing, position updates  
+├── IMU Task (Core 0, Priority 2)        - BNO055 data, sensor fusion
+├── Display Task (Core 0, Priority 1)    - OLED status updates
+├── TOF Task (Core 0, Priority 1)        - Obstacle detection → SharedData
+├── Encoder Task (Core 0, Priority 1)    - Odometry → SharedData
+├── Navigation Task (Core 1, Priority 3) - Path planning, PID motor control
 ├── Manual Control Task (Core 1, Priority 4) - Manual movement commands
 └── Telemetry Task (Core 1, Priority 1)  - Real-time data transmission
 ```

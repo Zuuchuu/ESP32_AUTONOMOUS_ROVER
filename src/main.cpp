@@ -20,6 +20,12 @@
 #include "tasks/NavigationTask.h"
 #include "tasks/TelemetryTask.h"
 #include "tasks/ManualControlTask.h"
+#include "tasks/DisplayTask.h"
+#include "tasks/TOFTask.h"
+#include "tasks/EncoderTask.h"
+
+// Hardware includes
+#include "hardware/MotorController.h"
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -32,6 +38,9 @@ TaskHandle_t imuTaskHandle = NULL;
 TaskHandle_t navigationTaskHandle = NULL;
 TaskHandle_t telemetryTaskHandle = NULL;
 TaskHandle_t manualControlTaskHandle = NULL;
+TaskHandle_t displayTaskHandle = NULL;
+TaskHandle_t tofTaskHandle = NULL;
+TaskHandle_t encoderTaskHandle = NULL;
 
 // Task instances
 WiFiTask wifiTask;
@@ -40,6 +49,9 @@ IMUTask imuTask;
 NavigationTask navigationTask;
 TelemetryTask telemetryTask;
 ManualControlTask manualControlTask;
+DisplayTask displayTask;
+TOFTask tofTask;
+EncoderTask encoderTask;
 
 // System state
 bool systemInitialized = false;
@@ -77,6 +89,9 @@ void setup() {
     
     // Setup hardware pins
     setupPins();
+
+    // Initialize Motor Controller (Global)
+    motorController.initialize();
     
     // Setup WiFi
     setupWiFi();
@@ -112,7 +127,7 @@ void loop() {
     }
     
     // Small delay to prevent watchdog from consuming too much CPU
-    delay(100);
+    delay(10);
 }
 
 // ============================================================================
@@ -256,6 +271,39 @@ void createTasks() {
     // Start telemetry task now that it's running
     telemetryTask.startTelemetry();
     
+    // Create Display Task
+    xTaskCreatePinnedToCore(
+        displayTaskFunction,
+        "DisplayTask",
+        TASK_STACK_SIZE_DISPLAY,
+        &displayTask,
+        TASK_PRIORITY_DISPLAY,
+        &displayTaskHandle,
+        TASK_CORE_DISPLAY
+    );
+
+    // Create TOF Task
+    xTaskCreatePinnedToCore(
+        tofTaskFunction,
+        "TOFTask",
+        TASK_STACK_SIZE_TOF,
+        &tofTask,
+        TASK_PRIORITY_TOF,
+        &tofTaskHandle,
+        TASK_CORE_TOF
+    );
+    
+    // Create Encoder Task
+    xTaskCreatePinnedToCore(
+        encoderTaskFunction,
+        "EncoderTask",
+        TASK_STACK_SIZE_ENCODER,
+        &encoderTask,
+        TASK_PRIORITY_ENCODER,
+        &encoderTaskHandle,
+        TASK_CORE_ENCODER
+    );
+
     Serial.println("All tasks created successfully");
 }
 
@@ -318,6 +366,18 @@ void systemWatchdog() {
     
     if (manualControlTaskHandle && eTaskGetState(manualControlTaskHandle) == eDeleted) {
         Serial.println("ERROR: Manual Control task has been deleted unexpectedly");
+    }
+
+    if (displayTaskHandle && eTaskGetState(displayTaskHandle) == eDeleted) {
+        Serial.println("ERROR: Display task has been deleted unexpectedly");
+    }
+
+    if (tofTaskHandle && eTaskGetState(tofTaskHandle) == eDeleted) {
+        Serial.println("ERROR: TOF task has been deleted unexpectedly");
+    }
+
+    if (encoderTaskHandle && eTaskGetState(encoderTaskHandle) == eDeleted) {
+        Serial.println("ERROR: Encoder task has been deleted unexpectedly");
     }
     
     // Update system uptime

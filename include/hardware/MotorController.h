@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "config/pins.h"
 #include "config/config.h"
+#include "hardware/MotorEncoder.h"
 
 // ============================================================================
 // MOTOR CONTROLLER CLASS
@@ -20,12 +21,29 @@ private:
     int leftPWMChannel;
     int rightPWMChannel;
     
+    // Encoders
+    MotorEncoder* leftEncoder;
+    MotorEncoder* rightEncoder;
+    
+    // PID Control
+    bool pidEnabled;
+    float kp, ki, kd;
+    
+    struct PIDState {
+        float targetSpeed; // Ticks per loop or RPM
+        float currentSpeed;
+        float errorSum;
+        float lastError;
+        unsigned long lastTime;
+    } pidLeft, pidRight;
+
     // Private methods
     void setLeftMotorDirection(bool forward);
     void setRightMotorDirection(bool forward);
     void setLeftMotorPWM(int speed);
     void setRightMotorPWM(int speed);
-    
+    void updatePID(PIDState& state, MotorEncoder* encoder, int& pwmOutput);
+
 public:
     // Constructor
     MotorController();
@@ -53,6 +71,15 @@ public:
     // Utility methods
     void emergencyStop();
     void setPWMChannels(int leftChannel, int rightChannel);
+    
+    // Control Loop
+    void update(); // Call this frequently (~10-20Hz minimum)
+    void enablePID(bool enable);
+    void setPIDTunings(float p, float i, float d);
+    long getLeftEncoderCount();
+    long getRightEncoderCount();
 };
+
+extern MotorController motorController;
 
 #endif // MOTOR_CONTROLLER_H

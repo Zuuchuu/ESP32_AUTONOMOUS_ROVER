@@ -37,7 +37,6 @@ private:
     int leftMotorSpeed;
     int rightMotorSpeed;
     int baseSpeed;
-    MotorController motorController;
     
     // Timing
     unsigned long lastUpdateTime;

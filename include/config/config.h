@@ -13,6 +13,9 @@
 #define TASK_PRIORITY_IMU         2
 #define TASK_PRIORITY_NAVIGATION  3
 #define TASK_PRIORITY_TELEMETRY   1
+#define TASK_PRIORITY_DISPLAY     1
+#define TASK_PRIORITY_TOF         2
+#define TASK_PRIORITY_ENCODER     2
 
 // Task Stack Sizes (in bytes)
 #define TASK_STACK_SIZE_WIFI      8192
@@ -20,6 +23,9 @@
 #define TASK_STACK_SIZE_IMU       8192
 #define TASK_STACK_SIZE_NAVIGATION 8192
 #define TASK_STACK_SIZE_TELEMETRY 4096
+#define TASK_STACK_SIZE_DISPLAY   4096
+#define TASK_STACK_SIZE_TOF       4096
+#define TASK_STACK_SIZE_ENCODER   4096
 
 // Task Core Assignment (0 or 1)
 #define TASK_CORE_WIFI           0
@@ -27,6 +33,9 @@
 #define TASK_CORE_IMU            0
 #define TASK_CORE_NAVIGATION     1
 #define TASK_CORE_TELEMETRY      1
+#define TASK_CORE_DISPLAY        0
+#define TASK_CORE_TOF            0
+#define TASK_CORE_ENCODER        0
 
 // ============================================================================
 // NETWORK CONFIGURATION
@@ -66,6 +75,9 @@
 #define IMU_UPDATE_RATE          100    // ms
 #define GPS_UPDATE_RATE          1000   // ms
 #define TELEMETRY_UPDATE_RATE    1000   // ms
+#define DISPLAY_UPDATE_RATE      200    // ms (5Hz)
+#define TOF_UPDATE_RATE          100    // ms (10Hz)
+#define ENCODER_UPDATE_RATE      50     // ms (20Hz)
 
 // ============================================================================
 // SYSTEM LIMITS
