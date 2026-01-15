@@ -212,6 +212,17 @@ void TelemetryTask::buildTelemetryData() {
     // Add WiFi signal strength
     telemetryDoc["wifi_strength"] = WiFi.RSSI();
     
+    // Add sensor connection status
+    JsonObject sensors = telemetryDoc["sensors"].to<JsonObject>();
+    sensors["imu"] = hasIMU;
+    sensors["gps"] = hasPosition;
+    sensors["tof"] = false; // TODO: Add TOF sensor status when implemented
+    
+    // Add TOF sensor data (placeholder for future implementation)
+    JsonObject tof_data = telemetryDoc["tof_data"].to<JsonObject>();
+    tof_data["distance"] = 0; // millimeters
+    tof_data["status"] = false;
+    
     // Add basic system status for Control Station
     telemetryDoc["system_status"] = "operational";
     telemetryDoc["timestamp"] = millis();

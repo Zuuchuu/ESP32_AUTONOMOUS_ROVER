@@ -18,10 +18,10 @@
 #define TASK_PRIORITY_ENCODER     2
 
 // Task Stack Sizes (in bytes)
-#define TASK_STACK_SIZE_WIFI      8192
+#define TASK_STACK_SIZE_WIFI      4096
 #define TASK_STACK_SIZE_GPS       4096
-#define TASK_STACK_SIZE_IMU       8192
-#define TASK_STACK_SIZE_NAVIGATION 8192
+#define TASK_STACK_SIZE_IMU       4096
+#define TASK_STACK_SIZE_NAVIGATION 4096
 #define TASK_STACK_SIZE_TELEMETRY 4096
 #define TASK_STACK_SIZE_DISPLAY   4096
 #define TASK_STACK_SIZE_TOF       4096
@@ -51,12 +51,30 @@
 // ============================================================================
 
 #define WAYPOINT_THRESHOLD       0.3    // meters
-#define BASE_SPEED               100    // PWM 0-255
-#define K_XTE                    10.0   // degrees per meter
-#define KP                       0.5    // PID proportional gain
-#define KI                       0.1    // PID integral gain
-#define KD                       0.05   // PID derivative gain
+#define BASE_SPEED               100    // PWM 0-255 (Approx 8 cm/s)
+#define K_XTE                    10.0   // degrees per meter (Cross Track Error gain)
+
+// PID Coefficients (Heuristic Tuning for N20 Motors - Standard Steering)
+// Scaled for dt-based calculation
+#define KP                       5.00   // Proportional (1 deg error -> 5 PWM diff)
+#define KI                       0.01   // Integral (Slow accumulation)
+#define KD                       0.10   // Derivative (Damping)
+
 #define EARTH_RADIUS             6371000 // meters
+
+// ============================================================================
+// MECH & MOTOR CONFIGURATION
+// ============================================================================
+
+#define WHEEL_DIAMETER_MM        43.0
+#define TRACK_WIDTH_MM           140.0
+#define MOTOR_MAX_RPM            90.0
+#define MOTOR_ENCODER_CPR        3575.0
+
+// Calculated Constants
+// Max Speed = 90 RPM * (pi * 0.043) / 60 ~= 0.20 m/s
+// Counts per Loop (20ms @ 90RPM): (90/60) * 3575 * 0.02 ~= 107
+#define MAX_COUNTS_PER_LOOP      107    // For Speed PID Feedforward
 
 // ============================================================================
 // MOTOR CONFIGURATION

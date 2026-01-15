@@ -12,18 +12,9 @@
 #define DEFAULT_KD 0.1f
 #endif
 
-// Approximate counts per loop at max speed. 
-// Need tuning. For N20, 100RPM ~ 1.6 RPS. 
-// If encoder is 500 CPR, then ~800 counts/sec.
-// If loop is 20ms (50Hz), then ~16 counts/loop.
-// Let's use a simpler approach: Map -255..255 to -MaxSpeed..MaxSpeed 
-// Or just use the input 'speed' as a target TICK count per interval if we want.
-// But legacy code passes 0-255 PWM.
-// Let's stick to: Input is target PWM duty cycle (feedforward) + PID correction based on error.
-// OR: Input is target SPEED.
-// Let's try: 0-255 maps to 0-100% speed.
-// We need to know MAX_COUNTS_PER_UPDATE.
-#define MAX_COUNTS_PER_UPDATE 60 // Calibration needed.
+#ifndef MAX_COUNTS_PER_UPDATE
+#define MAX_COUNTS_PER_UPDATE MAX_COUNTS_PER_LOOP
+#endif
 
 // Global Instance
 MotorController motorController;

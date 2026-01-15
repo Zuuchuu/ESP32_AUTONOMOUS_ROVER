@@ -50,10 +50,9 @@ bool NavigationTask::initialize() {
 
 void NavigationTask::run() {
     unsigned long lastPIDUpdate = 0;
-    const unsigned long pidInterval = 20; // 50Hz
+    const unsigned long pidInterval = 20; // 50Hz update rate
 
     while (true) {
-        // High frequency loop
         unsigned long now = millis();
 
         // 1. Safety Check (TOF from SharedData)
@@ -62,43 +61,33 @@ void NavigationTask::run() {
              float dist = currentState.frontObstacleDistance;
              bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
              
-             if (obstacleDetected) {
-                if (isNavigating) {
-                    Serial.println("[Navigation] OBSTACLE DETECTED! Emergency Stop!");
-                    stopNavigation();
-                }
+             if (obstacleDetected && isNavigating) {
+                Serial.println("[Navigation] OBSTACLE DETECTED! Emergency Stop!");
+                stopNavigation();
              }
         }
         
-        // 2. Update Motor PID (if navigating or if manual mode needs it, but manual mode has its own task)
-        // Actually, MotorController is global. We should update it here if THIS task owns it.
-        // But ManualControlTask also runs.
-        // We should explicitly update it ONLY if we are active? 
-        // Or let a separate ControlTask do it?
-        // Current design: Tasks run loops.
-        // If Manual mode is active, this loop pauses navigation logic.
-        // Checking TOF here protects navigation.
-        
-        // Update PID if navigating
+        // 2. Navigation Logic High-Level (Waypoint logic, Heading calculation)
+        // Runs less frequently (e.g. 100ms matches GPS/IMU update)
+        if (isNavigating && !sharedData.isManualModeActive()) {
+            processNavigation();
+        } else if (sharedData.isManualModeActive() && isNavigating) {
+            // If manual mode activated while navigating, pause.
+             Serial.println("[Navigation] Manual mode active - pausing navigation");
+             stopNavigation();
+        }
+
+        // 3. Motor PID Update (Low-Level)
+        // Ensure this runs frequently for smooth control
         if (isNavigating) {
              if (now - lastPIDUpdate >= pidInterval) {
                  motorController.update(); 
                  lastPIDUpdate = now;
              }
         }
-
-        // Check if manual mode is active - if so, pause navigation
-        if (sharedData.isManualModeActive()) {
-            if (isNavigating) {
-                Serial.println("[Navigation] Manual mode active - pausing navigation");
-                stopNavigation();
-            }
-        } else if (isNavigating) {
-            processNavigation();
-        }
         
-        // Update at specified interval (Navigation Logic is slower, e.g. GPS)
-        vTaskDelay(pdMS_TO_TICKS(10)); // Faster tick to allow PID updates
+        // Yield to other tasks
+        vTaskDelay(pdMS_TO_TICKS(10)); 
     }
 }
 
@@ -182,6 +171,10 @@ void NavigationTask::processNavigation() {
 // ============================================================================
 
 void NavigationTask::calculatePID() {
+    unsigned long now = millis();
+    float dt = (now - lastUpdateTime) / 1000.0f; // Convert to seconds
+    if (dt <= 0.0) dt = 0.1f; // Safety fallback
+
     // Calculate heading error (difference between target and current heading)
     IMUData currentIMUData;
     sharedData.getIMUData(currentIMUData);
@@ -201,8 +194,8 @@ void NavigationTask::calculatePID() {
     
     // PID calculation
     pidError = headingError;
-    pidIntegral += pidError;
-    pidDerivative = pidError - pidLastError;
+    pidIntegral += pidError * dt; // Integrate over time
+    pidDerivative = (pidError - pidLastError) / dt; // Derivative over time
     
     // Apply integral windup protection
     if (pidIntegral > 100.0) pidIntegral = 100.0;

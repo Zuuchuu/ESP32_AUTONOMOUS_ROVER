@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet map container */
+.leaflet-container {
+  background: #1e293b;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Scrollbar utility class */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* Overlay sidebar styling */
+.sidebar-overlay {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+/* Glassmorphism card effect */
+.glass-card {
+  @apply bg-gcs-card/80 backdrop-blur-md border border-gcs-border rounded-xl;
+}
+
+/* Status indicator animations */
+.status-connected {
+  @apply bg-gcs-success;
+  animation: pulse-connected 2s infinite;
+}
+
+@keyframes pulse-connected {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Attitude indicator styles */
+.attitude-indicator {
+  @apply relative overflow-hidden rounded-full;
+  background: linear-gradient(to bottom, #60a5fa 0%, #60a5fa 50%, #854d0e 50%, #854d0e 100%);
+}
+
+/* Compass styles */
+.compass-rose {
+  @apply relative rounded-full border-4 border-gcs-border;
+  background: conic-gradient(from 0deg, #94a3b8, #64748b);
+}
+
+/* Virtual joystick styles */
+.joystick-base {
+  @apply bg-gcs-card border-2 border-gcs-border rounded-full;
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.joystick-knob {
+  @apply bg-gradient-to-br from-gcs-primary to-gcs-secondary rounded-full shadow-lg;
+  transition: transform 0.1s ease-out;
+}
+
+/* Control button styles */
+.control-btn {
+  @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+  @apply bg-gcs-card border border-gcs-border;
+  @apply hover:bg-gcs-primary/20 hover:border-gcs-primary;
+  @apply active:scale-95;
+}
+
+.control-btn-primary {
+  @apply bg-gcs-primary text-white border-gcs-primary;
+  @apply hover:bg-gcs-primary/80;
+}
+
+.control-btn-danger {
+  @apply bg-gcs-danger text-white border-gcs-danger;
+  @apply hover:bg-gcs-danger/80;
+}
+
+/* Telemetry value display */
+.telemetry-value {
+  @apply font-mono text-lg text-gcs-primary;
+}
+
+.telemetry-label {
+  @apply text-xs text-slate-400 uppercase tracking-wider;
+}
+
+/* Map waypoint markers */
+.waypoint-marker {
+  @apply flex items-center justify-center w-6 h-6 rounded-full;
+  @apply bg-gcs-primary text-white text-xs font-bold;
+  @apply border-2 border-white shadow-lg;
+}
+
+.waypoint-marker-active {
+  @apply bg-gcs-warning animate-pulse;
+}
+
+/* Mode toggle styles */
+.mode-toggle {
+  @apply relative inline-flex h-10 w-48 rounded-lg bg-gcs-card p-1;
+}
+
+.mode-toggle-option {
+  @apply flex-1 flex items-center justify-center rounded-md text-sm font-medium transition-all;
+  @apply text-slate-400 hover:text-white;
+}
+
+.mode-toggle-option.active {
+  @apply bg-gcs-primary text-white shadow-lg;
+}
