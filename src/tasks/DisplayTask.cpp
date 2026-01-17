@@ -1,4 +1,6 @@
 #include "tasks/DisplayTask.h"
+#include "config/wifi_config.h"
+#include <WiFi.h>
 
 // ============================================================================
 // GLOBAL INSTANCE
@@ -66,7 +68,7 @@ void DisplayTask::run() {
     display.clearDisplay();
     
     drawHeader(status);
-    drawMissionInfo(state, missionState);
+    drawMissionInfo(state, missionState, status);
 
     display.display();
 }
@@ -79,9 +81,12 @@ void DisplayTask::drawHeader(const SystemStatus& status) {
     display.setTextSize(1);
     display.setCursor(0, 0);
     
-    // WiFi Status
+    // WiFi Status with IP:Port
     if (status.wifiConnected) {
-        display.print(F("W:On "));
+        display.print(F("W:"));
+        display.print(WiFi.localIP().toString());
+        display.print(F(":"));
+        display.print(TCP_SERVER_PORT);
     } else {
         display.print(F("W:Off"));
     }
@@ -89,17 +94,31 @@ void DisplayTask::drawHeader(const SystemStatus& status) {
     display.drawLine(0, 8, SCREEN_WIDTH, 8, SSD1306_WHITE);
 }
 
-void DisplayTask::drawMissionInfo(const RoverState& state, const MissionState& missionState) {
+void DisplayTask::drawMissionInfo(const RoverState& state, const MissionState& missionState, const SystemStatus& status) {
     display.setCursor(0, 10);
     
     // Mission State
-    display.print(F("St: "));
+    display.print(F("State: "));
     display.println(getMissionStateString(missionState));
 
-    // Heading
+    // IMU Calibration
     IMUData imu;
     sharedData.getIMUData(imu);
-    display.print(F("Hdg: "));
+    display.print(F("IMU: "));
+    display.print(imu.calibrationStatus.system);
+    display.print(F(" "));
+    display.print(imu.calibrationStatus.accelerometer);
+    display.print(F(" "));
+    display.print(imu.calibrationStatus.gyroscope);
+    display.print(F(" "));
+    display.println(imu.calibrationStatus.magnetometer);
+
+    // GPS Status
+    display.print(F("GPS Fix: "));
+    display.println(status.gpsFix ? F("YES") : F("NO"));
+
+    // Heading
+    display.print(F("Heading: "));
     display.print(imu.heading, 0);
     display.println(F(" deg"));
 
@@ -107,12 +126,9 @@ void DisplayTask::drawMissionInfo(const RoverState& state, const MissionState& m
     display.print(F("WP: "));
     display.print(state.currentWaypointIndex);
     display.print(F("/"));
-    display.println(state.totalWaypoints);
-
-    // Distance
-    display.print(F("Dist: "));
-    display.print(state.distanceToTarget, 1);
-    display.println(F(" m"));
+    display.print(state.totalWaypoints);
+    display.print(F(" Dist: "));
+    display.println(state.distanceToTarget, 1);
 }
 
 String DisplayTask::getMissionStateString(MissionState state) {

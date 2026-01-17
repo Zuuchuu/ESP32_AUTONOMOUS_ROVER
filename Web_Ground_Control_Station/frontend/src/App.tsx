@@ -17,11 +17,13 @@ import {
     ManualControl,
     MissionControl,
     ModeToggle,
+    ConnectionControl,
 } from './components';
 
 function App() {
     const {
         vehicleState,
+        waypoints,
         controlMode,
         isSocketConnected,
         setControlMode,
@@ -36,6 +38,8 @@ function App() {
         enableManualControl,
         disableManualControl,
         sendManualMove,
+        connectRover,
+        disconnectRover,
     } = useSocket();
 
     // Handle mode changes
@@ -48,7 +52,7 @@ function App() {
     }, [controlMode, enableManualControl, disableManualControl]);
 
     const handleUploadMission = () => {
-        uploadMission(vehicleState.waypoints);
+        uploadMission(waypoints);
     };
 
     return (
@@ -67,6 +71,11 @@ function App() {
                                 }`} />
                             {vehicleState.connected ? 'Rover Connected' : 'Rover Disconnected'}
                         </div>
+                        <ConnectionControl
+                            onConnect={connectRover}
+                            onDisconnect={disconnectRover}
+                            isConnected={vehicleState.connected}
+                        />
                     </div>
 
                     {/* Center: Sensor Status Bar */}
@@ -82,7 +91,7 @@ function App() {
             </header>
 
             {/* Full-screen Map */}
-            <div className="fixed inset-0 pt-20 pb-10 px-4">
+            <div className="fixed inset-0 pt-24 pb-10 px-4">
                 <div className="w-full h-full rounded-2xl overflow-hidden relative">
                     <MapView allowWaypointPlacement={controlMode === 'mission'} />
 

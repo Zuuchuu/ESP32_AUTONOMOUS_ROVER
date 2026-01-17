@@ -46,10 +46,13 @@ export interface SystemStatus {
     uptime: number;
 }
 
+// Sensor connection status
 export interface SensorStatus {
-    imu: boolean;
-    gps: boolean;
-    tof: boolean;
+    accel: boolean;  // Accelerometer
+    gyro: boolean;   // Gyroscope
+    mag: boolean;    // Magnetometer
+    gps: boolean;    // GPS
+    tof: boolean;    // Time-of-Flight
 }
 
 export interface TOFData {
@@ -132,7 +135,9 @@ export function createInitialVehicleState(): VehicleState {
         },
         waypoints: [],
         sensorStatus: {
-            imu: false,
+            accel: false,
+            gyro: false,
+            mag: false,
             gps: false,
             tof: false,
         },

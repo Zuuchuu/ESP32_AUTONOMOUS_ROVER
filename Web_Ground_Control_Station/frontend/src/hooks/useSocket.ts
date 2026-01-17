@@ -88,6 +88,38 @@ export function useSocket() {
         socketRef.current?.emit('manual:move', { direction, speed });
     }, []);
 
+    // Rover connection control
+    const connectRover = useCallback(async (host: string, port: number) => {
+        try {
+            const response = await fetch(`${SOCKET_URL}/rover/connect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port }),
+            });
+            const data = await response.json();
+            console.log('[Socket] Connect response:', data);
+            return data;
+        } catch (error) {
+            console.error('[Socket] Connect error:', error);
+            return { success: false, message: 'Failed to connect' };
+        }
+    }, []);
+
+    const disconnectRover = useCallback(async () => {
+        try {
+            const response = await fetch(`${SOCKET_URL}/rover/disconnect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await response.json();
+            console.log('[Socket] Disconnect response:', data);
+            return data;
+        } catch (error) {
+            console.error('[Socket] Disconnect error:', error);
+            return { success: false, message: 'Failed to disconnect' };
+        }
+    }, []);
+
     return {
         uploadMission,
         startMission,
@@ -98,5 +130,7 @@ export function useSocket() {
         enableManualControl,
         disableManualControl,
         sendManualMove,
+        connectRover,
+        disconnectRover,
     };
 }

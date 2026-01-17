@@ -34,7 +34,7 @@ private:
 
     // Drawing helpers
     void drawHeader(const SystemStatus& status);
-    void drawMissionInfo(const RoverState& state, const MissionState& missionState);
+    void drawMissionInfo(const RoverState& state, const MissionState& missionState, const SystemStatus& status);
     String getMissionStateString(MissionState state);
 
 public:

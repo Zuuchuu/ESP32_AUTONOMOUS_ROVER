@@ -44,6 +44,12 @@ export class VehicleStore {
         if (partial.waypoints !== undefined) {
             this.state.waypoints = partial.waypoints;
         }
+        if (partial.sensorStatus) {
+            this.state.sensorStatus = { ...this.state.sensorStatus, ...partial.sensorStatus };
+        }
+        if (partial.tofData) {
+            this.state.tofData = { ...this.state.tofData, ...partial.tofData };
+        }
 
         // Top-level fields
         if (partial.connected !== undefined) {

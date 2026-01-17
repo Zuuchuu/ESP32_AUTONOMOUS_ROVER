@@ -12,7 +12,7 @@ import { Waypoint } from './types.js';
 export function setupSocketHandlers(
     io: Server,
     vehicleStore: VehicleStore,
-    roverConnection: RoverConnection
+    getRoverConnection: () => RoverConnection
 ): void {
     io.on('connection', (socket: Socket) => {
         console.log(`[Socket] Client connected: ${socket.id}`);
@@ -41,7 +41,7 @@ export function setupSocketHandlers(
                 },
             };
 
-            if (roverConnection.sendCommand(command)) {
+            if (getRoverConnection().sendCommand(command)) {
                 socket.emit('mission:uploaded', { success: true, count: waypoints.length });
             } else {
                 socket.emit('mission:uploaded', { success: false, error: 'Rover not connected' });
@@ -50,19 +50,19 @@ export function setupSocketHandlers(
 
         // Handle mission control commands
         socket.on('mission:start', () => {
-            roverConnection.sendCommand({ command: 'start' });
+            getRoverConnection().sendCommand({ command: 'start' });
         });
 
         socket.on('mission:pause', () => {
-            roverConnection.sendCommand({ command: 'pause_mission' });
+            getRoverConnection().sendCommand({ command: 'pause_mission' });
         });
 
         socket.on('mission:resume', () => {
-            roverConnection.sendCommand({ command: 'resume_mission' });
+            getRoverConnection().sendCommand({ command: 'resume_mission' });
         });
 
         socket.on('mission:abort', () => {
-            roverConnection.sendCommand({ command: 'abort_mission' });
+            getRoverConnection().sendCommand({ command: 'abort_mission' });
         });
 
         socket.on('mission:clear', () => {
@@ -73,16 +73,16 @@ export function setupSocketHandlers(
         // Handle manual control
         socket.on('manual:enable', () => {
             console.log('[Socket] Manual control enabled');
-            roverConnection.sendCommand({ command: 'enable_manual' });
+            getRoverConnection().sendCommand({ command: 'enable_manual' });
         });
 
         socket.on('manual:disable', () => {
             console.log('[Socket] Manual control disabled');
-            roverConnection.sendCommand({ command: 'disable_manual' });
+            getRoverConnection().sendCommand({ command: 'disable_manual' });
         });
 
         socket.on('manual:move', (data: { direction: string; speed: number }) => {
-            roverConnection.sendCommand({
+            getRoverConnection().sendCommand({
                 command: 'manual_move',
                 direction: data.direction,
                 speed: data.speed,

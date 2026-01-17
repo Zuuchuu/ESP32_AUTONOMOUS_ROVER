@@ -50,7 +50,9 @@ function createInitialVehicleState() {
         },
         waypoints: [],
         sensorStatus: {
-            imu: false,
+            accel: false,
+            gyro: false,
+            mag: false,
             gps: false,
             tof: false,
         },

@@ -31,7 +31,7 @@
 // TCP SERVER CONFIGURATION
 // ============================================================================
 
-#define TCP_SERVER_PORT         80
+#define TCP_SERVER_PORT         8080
 #define TCP_MAX_CLIENTS         1
 #define TCP_BUFFER_SIZE         1024
 #define TCP_TIMEOUT_MS          5000

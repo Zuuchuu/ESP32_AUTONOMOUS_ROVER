@@ -210,14 +210,22 @@ void IMUTask::updateIMUData() {
     // Get Euler angles directly from library (replaces quaternion conversion)
     imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
     imuData.heading = euler.x();  // Heading (yaw, 0° magnetic north)
-    imuData.roll = euler.y();
-    imuData.pitch = euler.z();
+    
+    // Swap and Negate Pitch/Roll due to BNO055 mounting (X-Left, Y-Forward)
+    // Based on user feedback:
+    // Rover Up -> Pitch shown Down (Needs Negation)
+    // Rover Tilt Left -> Roll shown Right (Needs Negation)
+    // Sensor Z (Pitch) maps to Rover Roll
+    // Sensor Y (Roll) maps to Rover Pitch
+    imuData.roll = -euler.z();
+    imuData.pitch = -euler.y();
     
     // Normalize heading to 0-360° with 0° = North, clockwise positive
     imuData.heading = normalizeHeading(imuData.heading);
     
-    // Apply magnetic declination correction for true north
-    imuData.heading = normalizeHeading(imuData.heading + MAGNETIC_DECLINATION);
+    // Apply magnetic declination correction and fixed heading offset
+    // HEADING_OFFSET compensates for sensor mounting angle relative to North
+    imuData.heading = normalizeHeading(imuData.heading + HEADING_OFFSET + MAGNETIC_DECLINATION);
     
     // Get raw sensor data
     imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);

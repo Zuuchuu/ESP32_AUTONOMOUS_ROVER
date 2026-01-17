@@ -170,7 +170,12 @@ export class RoverConnection extends EventEmitter {
                         mag: imuData.mag || [0, 0, 0],
                         linearAccel: imuData.linear_accel || [0, 0, 0],
                         gravity: imuData.gravity || [0, 0, 9.8],
-                        calibration: imuData.calibration || { system: 0, gyroscope: 0, accelerometer: 0, magnetometer: 0 },
+                        calibration: {
+                            system: imuData.calibration?.sys ?? 0,
+                            gyroscope: imuData.calibration?.gyro ?? 0,
+                            accelerometer: imuData.calibration?.accel ?? 0,
+                            magnetometer: imuData.calibration?.mag ?? 0,
+                        },
                         temperature: imuData.temperature || data.temperature || 0,
                     };
                 }
@@ -190,9 +195,11 @@ export class RoverConnection extends EventEmitter {
             // Sensor status
             if (data.sensors) {
                 partialState.sensorStatus = {
-                    imu: data.sensors.imu || false,
-                    gps: data.sensors.gps || false,
-                    tof: data.sensors.tof || false,
+                    accel: data.sensors.accel ?? false,
+                    gyro: data.sensors.gyro ?? false,
+                    mag: data.sensors.mag ?? false,
+                    gps: data.sensors.gps ?? false,
+                    tof: data.sensors.tof ?? false,
                 };
             }
 

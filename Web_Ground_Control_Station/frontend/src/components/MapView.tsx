@@ -52,8 +52,8 @@ interface MapViewProps {
 }
 
 export function MapView({ onWaypointClick, allowWaypointPlacement = true }: MapViewProps) {
-    const { vehicleState, addWaypoint } = useRoverStore();
-    const { gps, waypoints, mission } = vehicleState;
+    const { vehicleState, waypoints, addWaypoint } = useRoverStore();
+    const { gps, mission } = vehicleState;
     const [followRover, setFollowRover] = useState(true);
 
     const hasValidPosition = gps.latitude !== 0 || gps.longitude !== 0;
@@ -91,8 +91,9 @@ export function MapView({ onWaypointClick, allowWaypointPlacement = true }: MapV
                 style={{ minHeight: '360px' }}
             >
                 <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    maxZoom={19}
                 />
 
                 {/* Waypoint click handler */}

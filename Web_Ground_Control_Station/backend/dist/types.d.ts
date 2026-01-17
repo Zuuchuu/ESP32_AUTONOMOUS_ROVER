@@ -41,7 +41,9 @@ export interface SystemStatus {
     uptime: number;
 }
 export interface SensorStatus {
-    imu: boolean;
+    accel: boolean;
+    gyro: boolean;
+    mag: boolean;
     gps: boolean;
     tof: boolean;
 }

@@ -21,8 +21,8 @@ export function MissionControl({
     onAbort,
     onClear
 }: MissionControlProps) {
-    const { vehicleState, clearWaypoints } = useRoverStore();
-    const { waypoints, mission } = vehicleState;
+    const { vehicleState, waypoints, clearWaypoints } = useRoverStore();
+    const { mission } = vehicleState;
 
     const handleClear = () => {
         clearWaypoints();

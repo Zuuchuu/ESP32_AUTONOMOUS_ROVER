@@ -50,10 +50,13 @@ export interface SystemStatus {
     uptime: number;
 }
 
+// Sensor connection status
 export interface SensorStatus {
-    imu: boolean;
-    gps: boolean;
-    tof: boolean;
+    accel: boolean;  // Accelerometer
+    gyro: boolean;   // Gyroscope
+    mag: boolean;    // Magnetometer
+    gps: boolean;    // GPS
+    tof: boolean;    // Time-of-Flight
 }
 
 export interface TOFData {
@@ -86,9 +89,9 @@ export interface VehicleState {
     imu: IMUData;
     system: SystemStatus;
     mission: MissionStatus;
-    waypoints: Waypoint[];
     sensorStatus: SensorStatus;
     tofData: TOFData;
+    waypoints?: Waypoint[]; // Optional - backend sends but we filter it out
 }
 
 export type ControlMode = 'mission' | 'manual';
@@ -96,6 +99,9 @@ export type ControlMode = 'mission' | 'manual';
 interface RoverStore {
     // Vehicle state from backend
     vehicleState: VehicleState;
+
+    // Waypoints managed separately to prevent backend overwrites
+    waypoints: Waypoint[];
 
     // UI state
     controlMode: ControlMode;
@@ -149,9 +155,10 @@ const initialVehicleState: VehicleState = {
         totalDistance: 0,
         estimatedTimeRemaining: 0,
     },
-    waypoints: [],
     sensorStatus: {
-        imu: false,
+        accel: false,
+        gyro: false,
+        mag: false,
         gps: false,
         tof: false,
     },
@@ -163,33 +170,25 @@ const initialVehicleState: VehicleState = {
 
 export const useRoverStore = create<RoverStore>((set) => ({
     vehicleState: initialVehicleState,
+    waypoints: [],
     controlMode: 'mission',
     isSocketConnected: false,
 
-    setVehicleState: (state) => set({ vehicleState: state }),
+    setVehicleState: (state) => {
+        // Filter out waypoints from backend to prevent overwrites
+        const { waypoints: _, ...stateWithoutWaypoints } = state;
+        set({ vehicleState: stateWithoutWaypoints });
+    },
 
     setControlMode: (mode) => set({ controlMode: mode }),
 
     setSocketConnected: (connected) => set({ isSocketConnected: connected }),
 
     addWaypoint: (waypoint) => set((state) => ({
-        vehicleState: {
-            ...state.vehicleState,
-            waypoints: [...state.vehicleState.waypoints, waypoint],
-        },
+        waypoints: [...state.waypoints, waypoint],
     })),
 
-    clearWaypoints: () => set((state) => ({
-        vehicleState: {
-            ...state.vehicleState,
-            waypoints: [],
-        },
-    })),
+    clearWaypoints: () => set({ waypoints: [] }),
 
-    setWaypoints: (waypoints) => set((state) => ({
-        vehicleState: {
-            ...state.vehicleState,
-            waypoints,
-        },
-    })),
+    setWaypoints: (waypoints) => set({ waypoints }),
 }));

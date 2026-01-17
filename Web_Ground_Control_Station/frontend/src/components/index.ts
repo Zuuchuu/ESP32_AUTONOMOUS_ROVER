@@ -8,3 +8,4 @@ export { MapView } from './MapView';
 export { ManualControl } from './ManualControl';
 export { MissionControl } from './MissionControl';
 export { ModeToggle } from './ModeToggle';
+export { ConnectionControl } from './ConnectionControl';

@@ -212,11 +212,14 @@ void TelemetryTask::buildTelemetryData() {
     // Add WiFi signal strength
     telemetryDoc["wifi_strength"] = WiFi.RSSI();
     
-    // Add sensor connection status
+    // Add sensor connection status (individual IMU sensors)
     JsonObject sensors = telemetryDoc["sensors"].to<JsonObject>();
-    sensors["imu"] = hasIMU;
-    sensors["gps"] = hasPosition;
+    sensors["accel"] = hasIMU;  // Accelerometer
+    sensors["gyro"] = hasIMU;   // Gyroscope
+    sensors["mag"] = hasIMU;    // Magnetometer
+    sensors["gps"] = hasPosition && currentPosition.isValid;  // GPS with valid fix
     sensors["tof"] = false; // TODO: Add TOF sensor status when implemented
+    
     
     // Add TOF sensor data (placeholder for future implementation)
     JsonObject tof_data = telemetryDoc["tof_data"].to<JsonObject>();

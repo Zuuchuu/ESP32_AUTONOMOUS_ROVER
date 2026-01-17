@@ -194,9 +194,11 @@ class RoverConnection extends events_1.EventEmitter {
             // Sensor status
             if (data.sensors) {
                 partialState.sensorStatus = {
-                    imu: data.sensors.imu || false,
-                    gps: data.sensors.gps || false,
-                    tof: data.sensors.tof || false,
+                    accel: data.sensors.accel ?? false,
+                    gyro: data.sensors.gyro ?? false,
+                    mag: data.sensors.mag ?? false,
+                    gps: data.sensors.gps ?? false,
+                    tof: data.sensors.tof ?? false,
                 };
             }
             // TOF data
