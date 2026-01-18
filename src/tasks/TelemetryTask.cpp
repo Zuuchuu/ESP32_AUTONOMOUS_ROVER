@@ -1,8 +1,12 @@
 #include "tasks/TelemetryTask.h"
+#include "tasks/GPSTask.h"
 #include "core/SharedData.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <functional>
+
+// External GPS task instance
+extern GPSTask gpsTask;
 
 // ============================================================================
 // CONSTRUCTOR AND DESTRUCTOR
@@ -117,9 +121,17 @@ void TelemetryTask::buildTelemetryData() {
     if (hasPosition) {
         telemetryDoc["lat"] = currentPosition.latitude;
         telemetryDoc["lon"] = currentPosition.longitude;
+        
+        // Add GPS metadata from GPSTask
+        telemetryDoc["altitude"] = gpsTask.getAltitude();
+        telemetryDoc["satellites"] = gpsTask.getSatellites();
+        telemetryDoc["hdop"] = gpsTask.getHDOP();
     } else {
         telemetryDoc["lat"] = 0.0;
         telemetryDoc["lon"] = 0.0;
+        telemetryDoc["altitude"] = 0.0;
+        telemetryDoc["satellites"] = 0;
+        telemetryDoc["hdop"] = 99.0;
     }
     
     if (hasIMU) {

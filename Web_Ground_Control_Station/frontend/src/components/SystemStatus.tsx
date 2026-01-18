@@ -4,15 +4,13 @@
  * Displays battery, WiFi, mode, and connection status.
  */
 
-import { SystemStatus as SystemStatusType } from '../store/roverStore';
+import { useRoverStore } from '../store/roverStore';
 
-interface SystemStatusProps {
-    system: SystemStatusType;
-    connected: boolean;
-    socketConnected: boolean;
-}
+export function SystemStatus() {
+    const system = useRoverStore(state => state.vehicleState.system);
+    const connected = useRoverStore(state => state.vehicleState.connected);
+    const socketConnected = useRoverStore(state => state.isSocketConnected);
 
-export function SystemStatus({ system, connected, socketConnected }: SystemStatusProps) {
     return (
         <div className="glass-card p-3">
             <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider">

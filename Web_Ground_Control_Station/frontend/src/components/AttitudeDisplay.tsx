@@ -4,13 +4,14 @@
  * Combined display showing pitch/roll (artificial horizon) and heading (compass) side-by-side.
  */
 
-interface AttitudeDisplayProps {
-    pitch: number;
-    roll: number;
-    heading: number;
-}
+import { useRoverStore } from '../store/roverStore';
 
-export function AttitudeDisplay({ pitch, roll, heading }: AttitudeDisplayProps) {
+export function AttitudeDisplay() {
+    // Select specific values to minimize re-renders
+    const pitch = useRoverStore(state => state.vehicleState.attitude.pitch);
+    const roll = useRoverStore(state => state.vehicleState.attitude.roll);
+    const heading = useRoverStore(state => state.vehicleState.attitude.yaw); // yaw is heading
+
     // Clamp pitch to reasonable display range
     const clampedPitch = Math.max(-60, Math.min(60, pitch));
     const pitchOffset = clampedPitch * 2;

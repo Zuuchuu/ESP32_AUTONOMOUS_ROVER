@@ -24,38 +24,41 @@ GPSTask::~GPSTask() {
 // ============================================================================
 
 bool GPSTask::initialize() {
-    Serial.println("Initializing GPS task...");
+    Serial.println("Initializing GPS task (NMEA/GNSS)...");
     
     // Initialize Serial2 for GPS communication
     Serial2.begin(GPS_BAUD_RATE, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
     
-    // Wait a moment for GPS to start
+    // Wait for serial port to stabilize
     delay(1000);
     
-    // Check if GPS is responding
+    // Check if GPS is sending data
     unsigned long startTime = millis();
-    bool gpsResponding = false;
+    bool dataReceived = false;
     
+    Serial.println("Waiting for GPS data...");
     while (millis() - startTime < 5000) { // 5 second timeout
         while (Serial2.available()) {
             char c = Serial2.read();
             if (gps.encode(c)) {
-                gpsResponding = true;
-                break;
+                dataReceived = true;
             }
         }
-        if (gpsResponding) break;
+        if (dataReceived) break;
         delay(100);
     }
     
-    if (gpsResponding) {
+    if (dataReceived) {
         gpsInitialized = true;
         Serial.println("GPS initialized successfully");
         Serial.printf("GPS baud rate: %d\n", GPS_BAUD_RATE);
+        Serial.println("GPS configured for NMEA/GNSS parsing (supports $GN sentences)");
         return true;
     } else {
-        Serial.println("ERROR: GPS not responding");
-        return false;
+        Serial.println("WARNING: No GPS data received. Check wiring and baud rate.");
+        Serial.println("GPS will continue trying in background...");
+        gpsInitialized = true; // Allow task to run and keep trying
+        return true;
     }
 }
 
@@ -72,11 +75,23 @@ void GPSTask::run() {
     
     // Read GPS data from Serial2
     bool newData = false;
+    int charsRead = 0;
     while (Serial2.available()) {
         char c = Serial2.read();
+        charsRead++;
         if (gps.encode(c)) {
             newData = true;
         }
+    }
+    
+    // Debug: Print stats every 5 seconds
+    static unsigned long lastDebugTime = 0;
+    if (millis() - lastDebugTime > 5000) {
+        Serial.printf("[GPS Debug] Chars: %d, Processed: %d, Fix: %s, Sats: %d\n",
+                     charsRead, gps.charsProcessed(), 
+                     gps.location.isValid() ? "YES" : "NO",
+                     gps.satellites.value());
+        lastDebugTime = millis();
     }
     
     if (newData) {
@@ -84,9 +99,13 @@ void GPSTask::run() {
         lastUpdateTime = millis();
     }
     
-    // Check for GPS timeout (no data for 5 seconds)
-    if (millis() - lastUpdateTime > 5000) {
-        Serial.println("WARNING: No GPS data received for 5 seconds");
+    // Check for GPS timeout (no data for 10 seconds)
+    if (millis() - lastUpdateTime > 10000 && lastUpdateTime > 0) {
+        static unsigned long lastWarning = 0;
+        if (millis() - lastWarning > 10000) {
+            Serial.println("WARNING: No GPS data received for 10 seconds");
+            lastWarning = millis();
+        }
     }
 }
 
@@ -107,10 +126,13 @@ void GPSTask::processGPSData() {
             lastPrintTime = millis();
         }
     } else {
-        // No valid fix
-        if (millis() - lastFixTime > 30000) { // 30 seconds without fix
-            Serial.println("WARNING: No GPS fix for 30 seconds");
-            lastFixTime = millis(); // Reset timer
+        // No valid fix yet
+        if (millis() - lastFixTime > 30000 && lastFixTime > 0) { // 30 seconds without fix
+            static unsigned long lastNoFixWarning = 0;
+            if (millis() - lastNoFixWarning > 30000) {
+                Serial.println("WARNING: No GPS fix for 30 seconds");
+                lastNoFixWarning = millis();
+            }
         }
     }
     
@@ -125,18 +147,14 @@ void GPSTask::updatePosition() {
     position.latitude = gps.location.lat();
     position.longitude = gps.location.lng();
     position.timestamp = millis();
+    position.isValid = true;  // Mark as valid since we have a GPS fix
     
     // Validate position
     if (isValidPosition(position.latitude, position.longitude)) {
         // Update shared data
         if (sharedData.setPosition(position)) {
-            Serial.printf("GPS: %.6f, %.6f\n", 
-                         position.latitude, position.longitude);
-        } else {
-            Serial.println("ERROR: Failed to update GPS position in shared data");
+            // Success - position updated
         }
-    } else {
-        Serial.println("WARNING: Invalid GPS position received");
     }
 }
 
@@ -154,28 +172,22 @@ void GPSTask::updateSystemStatus() {
 
 bool GPSTask::isValidPosition(double lat, double lng) {
     // Check for valid latitude (-90 to 90)
-    if (lat < -90.0 || lat > 90.0) {
-        return false;
-    }
+    if (lat < -90.0 || lat > 90.0) return false;
     
     // Check for valid longitude (-180 to 180)
-    if (lng < -180.0 || lng > 180.0) {
-        return false;
-    }
+    if (lng < -180.0 || lng > 180.0) return false;
     
     // Check for zero coordinates (likely invalid)
-    if (lat == 0.0 && lng == 0.0) {
-        return false;
-    }
+    if (lat == 0.0 && lng == 0.0) return false;
     
     return true;
 }
 
 void GPSTask::printGPSInfo() {
-    Serial.println("=== GPS Status ===");
+    Serial.println("=== GPS Status (NMEA/GNSS) ===");
     Serial.printf("Fix: %s\n", gps.location.isValid() ? "YES" : "NO");
     Serial.printf("Satellites: %d\n", gps.satellites.value());
-    Serial.printf("HDOP: %.1f\n", gps.hdop.value());
+    Serial.printf("HDOP: %.1f\n", gps.hdop.hdop());
     
     if (gps.location.isValid()) {
         Serial.printf("Position: %.6f, %.6f\n", 
@@ -185,8 +197,10 @@ void GPSTask::printGPSInfo() {
         Serial.printf("Course: %.1f°\n", gps.course.deg());
     }
     
-    Serial.printf("Last update: %lu ms ago\n", millis() - lastUpdateTime);
-    Serial.println("==================");
+    Serial.printf("Chars processed: %d\n", gps.charsProcessed());
+    Serial.printf("Sentences with fix: %d\n", gps.sentencesWithFix());
+    Serial.printf("Failed checksum: %d\n", gps.failedChecksum());
+    Serial.println("==============================");
 }
 
 bool GPSTask::hasFix() const {
@@ -198,7 +212,7 @@ int GPSTask::getSatellites() {
 }
 
 float GPSTask::getHDOP() {
-    return gps.hdop.isValid() ? gps.hdop.value() : 0.0f;
+    return gps.hdop.isValid() ? gps.hdop.hdop() : 0.0f;
 }
 
 float GPSTask::getAltitude() {
@@ -223,9 +237,7 @@ void gpsTaskFunction(void* parameter) {
     Serial.println("GPS task started");
     
     if (!gpsTask.initialize()) {
-        Serial.println("ERROR: Failed to initialize GPS task");
-        vTaskDelete(NULL);
-        return;
+        Serial.println("WARNING: GPS initialization had issues, continuing anyway...");
     }
     
     while (true) {

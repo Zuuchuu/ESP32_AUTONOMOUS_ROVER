@@ -89,7 +89,7 @@
 // SENSOR CONFIGURATION
 // ============================================================================
 
-#define GPS_BAUD_RATE            9600
+#define GPS_BAUD_RATE            38400
 #define IMU_UPDATE_RATE          100    // ms
 #define GPS_UPDATE_RATE          1000   // ms
 #define TELEMETRY_UPDATE_RATE    1000   // ms

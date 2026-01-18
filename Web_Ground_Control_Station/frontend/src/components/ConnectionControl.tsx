@@ -6,13 +6,15 @@
 
 import { useState } from 'react';
 
+import { useRoverStore } from '../store/roverStore';
+
 interface ConnectionControlProps {
     onConnect: (host: string, port: number) => Promise<any>;
     onDisconnect: () => Promise<any>;
-    isConnected: boolean;
 }
 
-export function ConnectionControl({ onConnect, onDisconnect, isConnected }: ConnectionControlProps) {
+export function ConnectionControl({ onConnect, onDisconnect }: ConnectionControlProps) {
+    const isConnected = useRoverStore(state => state.vehicleState.connected);
     const [host, setHost] = useState('192.168.1.100');
     const [port, setPort] = useState('8080');
     const [isConnecting, setIsConnecting] = useState(false);

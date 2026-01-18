@@ -9,3 +9,5 @@ export { ManualControl } from './ManualControl';
 export { MissionControl } from './MissionControl';
 export { ModeToggle } from './ModeToggle';
 export { ConnectionControl } from './ConnectionControl';
+export { RoverConnectionStatus } from './RoverConnectionStatus';
+export { LastHeartbeatDisplay } from './LastHeartbeatDisplay';

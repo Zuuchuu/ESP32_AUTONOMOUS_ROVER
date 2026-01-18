@@ -117,6 +117,15 @@ void DisplayTask::drawMissionInfo(const RoverState& state, const MissionState& m
     display.print(F("GPS Fix: "));
     display.println(status.gpsFix ? F("YES") : F("NO"));
 
+    // GPS Coordinates (for debugging)
+    GPSPosition pos;
+    if (sharedData.getPosition(pos)) {
+        display.print(F("Lat: "));
+        display.println(pos.latitude, 6);
+        display.print(F("Lon: "));
+        display.println(pos.longitude, 6);
+    }
+
     // Heading
     display.print(F("Heading: "));
     display.print(imu.heading, 0);

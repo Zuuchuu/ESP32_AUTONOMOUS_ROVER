@@ -1,10 +1,11 @@
 /**
  * Map View Component
  * 
- * Displays rover position and waypoints on an interactive map.
+ * Optimized for performance using component isolation.
+ * Main MapView is static; child components subscribe individually to store updates.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -18,8 +19,8 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Custom rover icon
-const roverIcon = new L.DivIcon({
+// Reuse icons to prevent recreation on render
+const ROVER_ICON = new L.DivIcon({
     className: 'rover-marker',
     html: `
     <div class="w-8 h-8 flex items-center justify-center">
@@ -32,8 +33,8 @@ const roverIcon = new L.DivIcon({
     iconAnchor: [16, 16],
 });
 
-// Waypoint icon generator
-function createWaypointIcon(index: number, isActive: boolean = false) {
+// Memoized Icon creation for waypoints
+const getWaypointIcon = (index: number, isActive: boolean) => {
     return new L.DivIcon({
         className: 'waypoint-marker-container',
         html: `
@@ -44,25 +45,20 @@ function createWaypointIcon(index: number, isActive: boolean = false) {
         iconSize: [24, 24],
         iconAnchor: [12, 12],
     });
-}
+};
 
 interface MapViewProps {
     onWaypointClick?: (lat: number, lng: number) => void;
     allowWaypointPlacement?: boolean;
 }
 
+// 1. MAIN CONTAINER - STATIC (No high freq subscriptions)
 export function MapView({ onWaypointClick, allowWaypointPlacement = true }: MapViewProps) {
-    const { vehicleState, waypoints, addWaypoint } = useRoverStore();
-    const { gps, mission } = vehicleState;
+    // Only subscribe to user interaction state, NOT telemetry
     const [followRover, setFollowRover] = useState(true);
+    const waypointsCount = useRoverStore(state => state.waypoints.length);
 
-    const hasValidPosition = gps.latitude !== 0 || gps.longitude !== 0;
-    const defaultCenter: [number, number] = hasValidPosition
-        ? [gps.latitude, gps.longitude]
-        : [10.762622, 106.660172]; // Default to Ho Chi Minh City
-
-    // Waypoint path
-    const pathPoints: [number, number][] = waypoints.map(wp => [wp.lat, wp.lng]);
+    console.log('[MapView] Rendering container'); // Debug only
 
     return (
         <div className="glass-card p-2 h-full min-h-[400px]">
@@ -79,102 +75,139 @@ export function MapView({ onWaypointClick, allowWaypointPlacement = true }: MapV
                         {followRover ? 'Following' : 'Static'}
                     </button>
                     <span className="text-xs text-slate-500">
-                        {waypoints.length} waypoint{waypoints.length !== 1 ? 's' : ''}
+                        {waypointsCount} waypoint{waypointsCount !== 1 ? 's' : ''}
                     </span>
                 </div>
             </div>
 
             <MapContainer
-                center={defaultCenter}
-                zoom={16}
+                center={[10.762622, 106.660172]} // Default center
+                zoom={18}
                 className="w-full h-[calc(100%-32px)] rounded-lg"
                 style={{ minHeight: '360px' }}
+                scrollWheelZoom={true}
             >
                 <TileLayer
-                    attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                    attribution='Tiles &copy; Esri'
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     maxZoom={19}
                 />
 
-                {/* Waypoint click handler */}
-                {allowWaypointPlacement && (
-                    <MapClickHandler
-                        onMapClick={(lat, lng) => {
-                            if (waypoints.length < 10) {
-                                const newWaypoint: Waypoint = {
-                                    id: waypoints.length + 1,
-                                    lat,
-                                    lng,
-                                };
-                                addWaypoint(newWaypoint);
-                                onWaypointClick?.(lat, lng);
-                            }
-                        }}
-                    />
-                )}
+                {/* Sub-components handle their own logic/subscriptions */}
 
-                {/* Auto-follow rover */}
-                {followRover && hasValidPosition && (
-                    <MapFollower position={[gps.latitude, gps.longitude]} />
-                )}
+                {allowWaypointPlacement && <MapClickHandler onWaypointClick={onWaypointClick} />}
 
-                {/* Waypoint path */}
-                {pathPoints.length > 1 && (
-                    <Polyline
-                        positions={pathPoints}
-                        color="#0ea5e9"
-                        weight={3}
-                        opacity={0.8}
-                        dashArray="10, 10"
-                    />
-                )}
+                <MapFollower enabled={followRover} />
 
-                {/* Waypoint markers */}
-                {waypoints.map((wp, index) => (
-                    <Marker
-                        key={wp.id}
-                        position={[wp.lat, wp.lng]}
-                        icon={createWaypointIcon(index, index === mission.currentWaypointIndex)}
-                    />
-                ))}
+                <RoverMarker />
 
-                {/* Rover marker */}
-                {hasValidPosition && (
-                    <Marker
-                        position={[gps.latitude, gps.longitude]}
-                        icon={roverIcon}
-                    />
-                )}
+                <MissionLayer />
+
             </MapContainer>
         </div>
     );
 }
 
-// Component to handle map clicks
-function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
-    useMapEvents({
-        click: (e) => {
-            onMapClick(e.latlng.lat, e.latlng.lng);
-        },
-    });
-    return null;
-}
+// 2. ROVER MARKER - Subscribes to GPS (10Hz)
+const RoverMarker = memo(function RoverMarker() {
+    // Select specific fields using shallow comparison if needed, 
+    // but here we just need lat/lon. 
+    // Optimization: separate lat/lon selectors to avoid object creation if possible,
+    // or rely on store memoization.
+    const lat = useRoverStore(state => state.vehicleState.gps.latitude);
+    const lng = useRoverStore(state => state.vehicleState.gps.longitude);
 
-// Component to follow rover position
-function MapFollower({ position }: { position: [number, number] }) {
+    if (lat === 0 && lng === 0) return null;
+
+    return <Marker position={[lat, lng]} icon={ROVER_ICON} zIndexOffset={1000} />;
+});
+
+// 3. MAP FOLLOWER - Subscribes to GPS, Handles Panning
+const MapFollower = memo(function MapFollower({ enabled }: { enabled: boolean }) {
     const map = useMap();
-    const prevPosition = useRef(position);
+    const lat = useRoverStore(state => state.vehicleState.gps.latitude);
+    const lng = useRoverStore(state => state.vehicleState.gps.longitude);
+
+    // Use ref to track internal state for interaction handling
+    const isUserInteracting = useRef(false);
+
+    // Register interaction events to pause following while dragging
+    useEffect(() => {
+        const onDragStart = () => { isUserInteracting.current = true; };
+        const onDragEnd = () => { isUserInteracting.current = false; };
+
+        map.on('dragstart', onDragStart);
+        map.on('dragend', onDragEnd);
+        map.on('zoomstart', onDragStart);
+        map.on('zoomend', onDragEnd);
+
+        return () => {
+            map.off('dragstart', onDragStart);
+            map.off('dragend', onDragEnd);
+            map.off('zoomstart', onDragStart);
+            map.off('zoomend', onDragEnd);
+        };
+    }, [map]);
 
     useEffect(() => {
-        const [lat, lng] = position;
-        const [prevLat, prevLng] = prevPosition.current;
+        if (!enabled || (lat === 0 && lng === 0) || isUserInteracting.current) return;
 
-        // Only update if position changed significantly
-        if (Math.abs(lat - prevLat) > 0.00001 || Math.abs(lng - prevLng) > 0.00001) {
-            map.setView(position, map.getZoom(), { animate: true });
-            prevPosition.current = position;
-        }
-    }, [map, position]);
+        // Smooth pan
+        map.panTo([lat, lng], { animate: true, duration: 0.1 });
+    }, [map, lat, lng, enabled]);
 
+    return null;
+});
+
+// 4. MISSION LAYER - Subscribes to Mission/Waypoints
+const MissionLayer = memo(function MissionLayer() {
+    const waypoints = useRoverStore(state => state.waypoints);
+    const currentWpIndex = useRoverStore(state => state.vehicleState.mission.currentWaypointIndex);
+
+    const pathPoints: [number, number][] = waypoints.map(wp => [wp.lat, wp.lng]);
+
+    return (
+        <>
+            {pathPoints.length > 1 && (
+                <Polyline
+                    positions={pathPoints}
+                    color="#0ea5e9"
+                    weight={3}
+                    opacity={0.8}
+                    dashArray="10, 10"
+                />
+            )}
+
+            {waypoints.map((wp, index) => (
+                <Marker
+                    key={wp.id}
+                    position={[wp.lat, wp.lng]}
+                    icon={getWaypointIcon(index, index === currentWpIndex)}
+                />
+            ))}
+        </>
+    );
+});
+
+// 5. CLICK HANDLER
+function MapClickHandler({ onWaypointClick }: { onWaypointClick?: (lat: number, lng: number) => void }) {
+    const addWaypoint = useRoverStore(state => state.addWaypoint);
+    const waypointsLength = useRoverStore(state => state.waypoints.length);
+
+    useMapEvents({
+        click: (e) => {
+            if (waypointsLength < 10) {
+                // Determine ID based on existing max ID or simple length
+                // Ideally this logic should be in the store action, but here is fine for now
+                const newWaypoint: Waypoint = {
+                    id: Date.now(), // Simple unique ID
+                    lat: e.latlng.lat,
+                    lng: e.latlng.lng,
+                };
+                addWaypoint(newWaypoint);
+                onWaypointClick?.(e.latlng.lat, e.latlng.lng);
+            }
+        },
+    });
     return null;
 }

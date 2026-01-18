@@ -4,13 +4,11 @@
  * Displays BNO055 calibration status with visual indicators.
  */
 
-import type { IMUCalibration } from '../store/roverStore';
+import { useRoverStore } from '../store/roverStore';
 
-interface IMUCalibrationProps {
-    calibration: IMUCalibration;
-}
+export function IMUCalibration() {
+    const calibration = useRoverStore(state => state.vehicleState.imu.calibration);
 
-export function IMUCalibration({ calibration }: IMUCalibrationProps) {
     return (
         <div className="glass-card p-3">
             <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider">

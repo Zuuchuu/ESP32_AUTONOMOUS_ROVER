@@ -4,13 +4,12 @@
  * Displays GPS coordinates, satellite count, and fix status.
  */
 
-import { GPSData } from '../store/roverStore';
+import { useRoverStore } from '../store/roverStore';
 
-interface GPSStatusProps {
-    gps: GPSData;
-}
+export function GPSStatus() {
+    const gps = useRoverStore(state => state.vehicleState.gps);
 
-export function GPSStatus({ gps }: GPSStatusProps) {
+    // Derived state inside component body is fine as gps object changes ref on update
     const hasValidPosition = gps.latitude !== 0 || gps.longitude !== 0;
 
     return (

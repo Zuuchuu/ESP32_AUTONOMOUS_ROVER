@@ -4,13 +4,11 @@
  * Displays connection status for individual sensors with icon-based indicators.
  */
 
-import { SensorStatus } from '../store/roverStore';
+import { useRoverStore } from '../store/roverStore';
 
-interface SensorStatusBarProps {
-    sensorStatus: SensorStatus;
-}
+export function SensorStatusBar() {
+    const sensorStatus = useRoverStore(state => state.vehicleState.sensorStatus);
 
-export function SensorStatusBar({ sensorStatus }: SensorStatusBarProps) {
     return (
         <div className="flex items-center gap-3">
             <SensorIndicator

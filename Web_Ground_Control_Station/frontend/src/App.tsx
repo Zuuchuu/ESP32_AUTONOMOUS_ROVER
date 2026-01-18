@@ -18,14 +18,16 @@ import {
     MissionControl,
     ModeToggle,
     ConnectionControl,
+    RoverConnectionStatus,
+    LastHeartbeatDisplay,
 } from './components';
 
 function App() {
+    // Only subscribe to what App needs for LAYOUT or LOGIC
+    // NOT high-frequency data (like pitch/roll/heartbeat)
     const {
-        vehicleState,
         waypoints,
         controlMode,
-        isSocketConnected,
         setControlMode,
     } = useRoverStore();
 
@@ -65,22 +67,18 @@ function App() {
                         <h1 className="text-xl font-bold text-white">
                             🚀 ESP32 Rover GCS
                         </h1>
-                        <div className={`flex items-center gap-2 text-sm ${vehicleState.connected ? 'text-gcs-success' : 'text-gcs-danger'
-                            }`}>
-                            <div className={`w-2 h-2 rounded-full ${vehicleState.connected ? 'bg-gcs-success animate-pulse' : 'bg-gcs-danger'
-                                }`} />
-                            {vehicleState.connected ? 'Rover Connected' : 'Rover Disconnected'}
-                        </div>
+
+                        <RoverConnectionStatus />
+
                         <ConnectionControl
                             onConnect={connectRover}
                             onDisconnect={disconnectRover}
-                            isConnected={vehicleState.connected}
                         />
                     </div>
 
                     {/* Center: Sensor Status Bar */}
                     <div className="flex justify-center">
-                        <SensorStatusBar sensorStatus={vehicleState.sensorStatus} />
+                        <SensorStatusBar />
                     </div>
 
                     {/* Right: Mode Toggle */}
@@ -93,22 +91,15 @@ function App() {
             {/* Full-screen Map */}
             <div className="fixed inset-0 pt-24 pb-10 px-4">
                 <div className="w-full h-full rounded-2xl overflow-hidden relative">
+                    {/* MapView now handles its own subscriptions */}
                     <MapView allowWaypointPlacement={controlMode === 'mission'} />
 
                     {/* Left Sidebar - Telemetry (inside map) */}
                     <div className="absolute left-4 top-12 bottom-4 w-64 z-40 overflow-y-auto space-y-3 scrollbar-thin">
-                        <AttitudeDisplay
-                            pitch={vehicleState.attitude.pitch}
-                            roll={vehicleState.attitude.roll}
-                            heading={vehicleState.attitude.yaw}
-                        />
-                        <GPSStatus gps={vehicleState.gps} />
-                        <IMUCalibration calibration={vehicleState.imu.calibration} />
-                        <SystemStatus
-                            system={vehicleState.system}
-                            connected={vehicleState.connected}
-                            socketConnected={isSocketConnected}
-                        />
+                        <AttitudeDisplay />
+                        <GPSStatus />
+                        <IMUCalibration />
+                        <SystemStatus />
                     </div>
 
                     {/* Right Sidebar - Controls (inside map) */}
@@ -136,11 +127,7 @@ function App() {
             <footer className="absolute bottom-0 left-0 right-0 z-50 bg-gcs-dark/95 backdrop-blur-md border-t border-gcs-border px-4 py-2">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                     <span>ESP32 Autonomous Rover Ground Control Station v1.1</span>
-                    <span>
-                        Last Update: {vehicleState.lastHeartbeat > 0
-                            ? new Date(vehicleState.lastHeartbeat).toLocaleTimeString()
-                            : 'Never'}
-                    </span>
+                    <LastHeartbeatDisplay />
                 </div>
             </footer>
         </div>
