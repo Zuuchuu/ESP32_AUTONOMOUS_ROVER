@@ -1,183 +1,157 @@
-# Web-Based Ground Control Station (GCS)
+# Web Ground Control Station (Web GCS)
 
-A modern, cross-platform Ground Control Station for the ESP32 Autonomous Rover.
+A professional, mission-critical interface for the ESP32 Autonomous Rover. Built with modern web technologies to provide real-time telemetry, mission planning, and manual control capabilities from any browser.
 
-## Features
+![React](https://img.shields.io/badge/Frontend-React%20v18-blue)
+![Node](https://img.shields.io/badge/Backend-Node.js%20v18-green)
+![Socket.IO](https://img.shields.io/badge/Comms-Socket.IO-black)
+![Tailwind](https://img.shields.io/badge/Style-TailwindCSS-06b6d4)
 
-- 🌐 **Web-Based**: Accessible from any modern browser (Chrome, Firefox, Safari)
-- ⚡ **Real-Time**: Low-latency telemetry via WebSocket (Socket.IO)
-- 🗺️ **Interactive Map**: Leaflet-based map with waypoint placement
-- 🎮 **Dual Mode**: Mission mode and Manual control mode
-- 📊 **Telemetry Dashboard**: Attitude indicator, compass, GPS status, system health
+---
 
-## Architecture
+## 🏗️ Architecture
+
+The Web GCS acts as the bridge between the user and the autonomous rover. It consists of a high-performance Node.js backend handling TCP communication and a responsive React frontend for visualization.
 
 ```
-┌─────────────────┐     TCP      ┌─────────────────┐   WebSocket   ┌─────────────────┐
-│   ESP32 Rover   │ ──────────── │  Node.js Backend│ ──────────────│  React Frontend │
-│  (JSON/Mavlink) │              │  (Socket.IO)    │               │  (Browser)      │
-└─────────────────┘              └─────────────────┘               └─────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 WEB GROUND CONTROL STATION                  │
+│                                                             │
+│  ┌──────────────────┐             ┌──────────────────────┐  │
+│  │  React Frontend  │◄───────────►│   Node.js Backend    │  │
+│  │     (Browser)    │  WebSocket  │ (Express/Socket.IO)  │  │
+│  └──────────────────┘             └──────────┬───────────┘  │
+└──────────────────────────────────────────────┼──────────────┘
+                                               │ TCP / JSON
+                                               │
+┌──────────────────────────────────────────────▼───────────┐
+│                      ESP32 ROVER                         │
+│             (WiFiTask @ Port 80)                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+---
+
+## ✨ Key Features
+
+### 🖥️ Instrument Cluster
+- **Artificial Horizon**: Real-time visual representation of Pitch and Roll.
+- **Digital Compass**: Heading indicator with cardinal directions.
+- **Status Indicators**:
+    - **GPS**: Fix status, HDOP, Satellite count.
+    - **IMU**: Calibration confidence scores (System, Gyro, Accel, Mag).
+    - **System**: WiFi RSSI, Battery Voltage, Uptime.
+
+### 🗺️ Mission Control
+- **Interactive Map**: Click-to-place waypoints on a global map.
+- **Workflow**:
+    1. **Plan**: Add waypoints graphically.
+    2. **Upload**: Send mission to rover (validates connection).
+    3. **Start**: Trigger autonomous navigation.
+    4. **Monitor**: Watch progress (Current WP / Total WP, ETA).
+- **Dynamic Controls**: Smart buttons that change based on state (Start -> Stop -> Resume).
+
+### 🎮 Manual Control
+- **Keyboard Drive**: Use `W`, `A`, `S`, `D` for directional control.
+- **Safety**:
+    - **Dead Man's Switch**: Rovers stops if key is released.
+    - **Emergency Stop**: Spacebar sends immediate HALT command.
+- **Speed Limiter**: Adjustable power output (0-100%) via slider.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
+- **Node.js**: v18 or higher
+- **npm**: v9 or higher
+- **Network**: Computer must be on the same WiFi network as the ESP32 Rover.
 
-- Node.js 18+ 
-- npm 9+
-- ESP32 Rover running and connected to the same network
-
-### 1. Start the Backend
+### 1. Backend Setup
+The backend handles the persistent TCP connection to the rover.
 
 ```bash
 cd backend
 npm install
+
+# Start development server
+# Default connects to Rover at 192.168.1.100 (configurable)
 npm run dev
 ```
 
-The backend will start on `http://localhost:3001`.
+**Configuration:**
+Edit `backend/src/config.ts` or use Environment Variables:
+```bash
+ROVER_HOST="192.168.4.1" ROVER_PORT=80 npm run dev
+```
 
-### 2. Start the Frontend
+### 2. Frontend Setup
+The frontend provides the user interface.
 
 ```bash
 cd frontend
 npm install
+
+# Start development server (Vite)
 npm run dev
 ```
+Open your browser to `http://localhost:5173`.
 
-The frontend will start on `http://localhost:5173`.
+---
 
-### 3. Configure Rover Connection
+## 🔌 API Reference (Internal)
 
-Edit `backend/src/config.ts` to set your rover's IP address:
+Communication between Frontend and Backend uses Socket.IO.
 
+### Client -> Server Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `mission:upload` | `[{lat, lng}]` | Sends waypoint list to backend for formatting. |
+| `mission:start` | `null` | Commands rover to begin mission. |
+| `mission:pause` | `null` | Pauses current mission. |
+| `mission:abort` | `null` | Stops mission and clears state. |
+| `manual:enable` | `null` | Switches rover to MANUAL mode. |
+| `manual:move` | `{direction, speed}` | Sends movement command (`forward`, `left`, etc). |
+
+### Server -> Client Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `state` | `VehicleState` | Broadcasts full vehicle telemetry (~20Hz). |
+| `mission:uploaded` | `{success, count}` | Confirmation of upload status. |
+
+### Data Structures
+
+**VehicleState Object**:
 ```typescript
-ROVER_HOST: '192.168.1.100',  // Your rover's IP
-ROVER_PORT: 8080,              // TCP port
+interface VehicleState {
+  connected: boolean;      // TCP connection status
+  attitude: {
+    roll: number;
+    pitch: number;
+    yaw: number;
+  };
+  mission: {
+    active: boolean;
+    currentWaypointIndex: number;
+    distanceToWaypoint: number;
+  };
+  imu: {
+    calibration: { system: number, ... }; // 0-3 confidence
+  };
+  // ... other telemetry
+}
 ```
 
-Or use environment variables:
-```bash
-ROVER_HOST=192.168.1.100 ROVER_PORT=8080 npm run dev
-```
+---
 
-## Project Structure
+## 🛠️ Development
 
-```
-Web_Ground_Control_Station/
-├── backend/                 # Node.js + TypeScript backend
-│   ├── src/
-│   │   ├── index.ts         # Main entry point
-│   │   ├── config.ts        # Configuration
-│   │   ├── types.ts         # TypeScript types
-│   │   ├── roverConnection.ts  # TCP client for rover
-│   │   ├── vehicleStore.ts  # In-memory state store
-│   │   └── socketHandlers.ts   # WebSocket event handlers
-│   ├── package.json
-│   └── tsconfig.json
-│
-└── frontend/                # React + Vite + Tailwind frontend
-    ├── src/
-    │   ├── App.tsx          # Main application
-    │   ├── components/      # UI components
-    │   │   ├── AttitudeIndicator.tsx
-    │   │   ├── Compass.tsx
-    │   │   ├── GPSStatus.tsx
-    │   │   ├── SystemStatus.tsx
-    │   │   ├── MapView.tsx
-    │   │   ├── ManualControl.tsx
-    │   │   ├── MissionControl.tsx
-    │   │   └── ModeToggle.tsx
-    │   ├── hooks/
-    │   │   └── useSocket.ts # Socket.IO client hook
-    │   └── store/
-    │       └── roverStore.ts # Zustand state store
-    ├── package.json
-    └── vite.config.ts
-```
+- **State Management**: `frontend/src/store/roverStore.ts` uses **Zustand** for centralized state.
+- **Styling**: **TailwindCSS** with custom glass-morphism classes in `index.css`.
+- **Map**: **React-Leaflet** for map rendering.
 
-## Usage
+---
 
-### Mission Mode
-1. Click on the map to add waypoints (up to 10)
-2. Click "Upload Mission" to send waypoints to rover
-3. Click "Start" to begin autonomous navigation
-4. Monitor progress on the map and telemetry panels
-
-### Manual Mode
-1. Switch to "Manual" mode using the toggle
-2. Click "Enable" to activate manual control
-3. Use the D-pad or keyboard (WASD/Arrow keys) to control the rover
-4. Adjust speed with the slider
-5. Press Space or click STOP to stop immediately
-
-## API Reference
-
-### WebSocket Events (Frontend → Backend)
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `mission:upload` | `Waypoint[]` | Upload waypoints to rover |
-| `mission:start` | - | Start mission |
-| `mission:pause` | - | Pause mission |
-| `mission:resume` | - | Resume mission |
-| `mission:abort` | - | Abort mission |
-| `mission:clear` | - | Clear waypoints |
-| `manual:enable` | - | Enable manual mode |
-| `manual:disable` | - | Disable manual mode |
-| `manual:move` | `{direction, speed}` | Send movement command |
-
-### WebSocket Events (Backend → Frontend)
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `state` | `VehicleState` | Full vehicle state (20Hz) |
-| `connection:status` | `{connected: boolean}` | Rover connection status |
-
-## Development
-
-### Backend Development
-```bash
-cd backend
-npm run dev   # Start with hot-reload
-npm run build # Build for production
-npm start     # Run production build
-```
-
-### Frontend Development
-```bash
-cd frontend
-npm run dev     # Start dev server
-npm run build   # Build for production
-npm run preview # Preview production build
-```
-
-## Technology Stack
-
-### Backend
-- **Runtime**: Node.js 18+
-- **Language**: TypeScript
-- **Framework**: Express
-- **WebSocket**: Socket.IO
-- **Build Tool**: tsup/tsc
-
-### Frontend
-- **Framework**: React 18
-- **Build Tool**: Vite 5
-- **Styling**: Tailwind CSS
-- **State Management**: Zustand
-- **Map**: React-Leaflet
-- **WebSocket**: Socket.IO Client
-
-## Future Improvements
-
-- [ ] Mavlink protocol support (replacing JSON)
-- [ ] Flight path history/track logging
-- [ ] Video streaming integration
-- [ ] Multiple rover support
-- [ ] Mission file import/export
-- [ ] 3D attitude visualization
-
-## License
-
-MIT
+*Part of the ESP32 Autonomous Rover Project*
