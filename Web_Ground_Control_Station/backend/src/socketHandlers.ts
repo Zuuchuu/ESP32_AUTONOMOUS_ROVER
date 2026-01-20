@@ -26,9 +26,9 @@ export function setupSocketHandlers(
 
             vehicleStore.setWaypoints(waypoints);
 
-            // Format waypoints for ESP32
+            // Format waypoints for ESP32 - upload only, don't auto-start
             const command = {
-                command: 'start_mission',
+                command: 'upload_mission',
                 mission_id: `mission_${Date.now()}`,
                 waypoints: waypoints.map(wp => ({
                     lat: wp.lat,
@@ -50,7 +50,8 @@ export function setupSocketHandlers(
 
         // Handle mission control commands
         socket.on('mission:start', () => {
-            getRoverConnection().sendCommand({ command: 'start' });
+            // Start mission uses resume_mission to begin navigation
+            getRoverConnection().sendCommand({ command: 'resume_mission' });
         });
 
         socket.on('mission:pause', () => {
@@ -62,10 +63,13 @@ export function setupSocketHandlers(
         });
 
         socket.on('mission:abort', () => {
-            getRoverConnection().sendCommand({ command: 'abort_mission' });
+            // Temporary stop - use pause_mission
+            getRoverConnection().sendCommand({ command: 'pause_mission' });
         });
 
         socket.on('mission:clear', () => {
+            // Full cancel - abort on rover and clear waypoints
+            getRoverConnection().sendCommand({ command: 'abort_mission' });
             vehicleStore.clearWaypoints();
             socket.emit('state', vehicleStore.getState());
         });

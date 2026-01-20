@@ -3,22 +3,45 @@
  * 
  * Maintains the current state of the rover.
  * Merges partial updates from telemetry into a complete state object.
+ * 
+ * OPTIMIZED: Uses dirty flag to prevent unnecessary broadcasts.
  */
 
 import { VehicleState, createInitialVehicleState, Waypoint } from './types.js';
 
 export class VehicleStore {
     private state: VehicleState;
+    private _isDirty: boolean = false;
+    private _cachedState: VehicleState | null = null;
 
     constructor() {
         this.state = createInitialVehicleState();
     }
 
     /**
-     * Get current complete state
+     * Check if state has changed since last broadcast
+     */
+    get isDirty(): boolean {
+        return this._isDirty;
+    }
+
+    /**
+     * Get current complete state (returns cached if not dirty)
      */
     getState(): VehicleState {
-        return { ...this.state };
+        if (!this._isDirty && this._cachedState) {
+            return this._cachedState;
+        }
+        // Only create new object when state has changed
+        this._cachedState = { ...this.state };
+        return this._cachedState;
+    }
+
+    /**
+     * Clear dirty flag after broadcast
+     */
+    clearDirty(): void {
+        this._isDirty = false;
     }
 
     /**
@@ -58,6 +81,9 @@ export class VehicleStore {
         if (partial.lastHeartbeat !== undefined) {
             this.state.lastHeartbeat = partial.lastHeartbeat;
         }
+
+        // Mark as dirty after any update
+        this._isDirty = true;
     }
 
     /**
@@ -65,6 +91,7 @@ export class VehicleStore {
      */
     setConnected(connected: boolean): void {
         this.state.connected = connected;
+        this._isDirty = true;
     }
 
     /**
@@ -73,6 +100,7 @@ export class VehicleStore {
     setWaypoints(waypoints: Waypoint[]): void {
         this.state.waypoints = waypoints;
         this.state.mission.totalWaypoints = waypoints.length;
+        this._isDirty = true;
     }
 
     /**
@@ -82,6 +110,7 @@ export class VehicleStore {
         this.state.waypoints = [];
         this.state.mission.totalWaypoints = 0;
         this.state.mission.currentWaypointIndex = 0;
+        this._isDirty = true;
     }
 
     /**
@@ -89,5 +118,7 @@ export class VehicleStore {
      */
     reset(): void {
         this.state = createInitialVehicleState();
+        this._cachedState = null;
+        this._isDirty = true;
     }
 }

@@ -1,10 +1,12 @@
 /**
  * Vehicle State Store (Zustand)
  * 
- * Global state management for rover telemetry.
+ * OPTIMIZED: Uses granular update functions to minimize object reference changes.
+ * Only updates specific slices when their data actually changes.
  */
 
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 
 // Types matching backend
 export interface AttitudeData {
@@ -50,13 +52,12 @@ export interface SystemStatus {
     uptime: number;
 }
 
-// Sensor connection status
 export interface SensorStatus {
-    accel: boolean;  // Accelerometer
-    gyro: boolean;   // Gyroscope
-    mag: boolean;    // Magnetometer
-    gps: boolean;    // GPS
-    tof: boolean;    // Time-of-Flight
+    accel: boolean;
+    gyro: boolean;
+    mag: boolean;
+    gps: boolean;
+    tof: boolean;
 }
 
 export interface TOFData {
@@ -91,24 +92,21 @@ export interface VehicleState {
     mission: MissionStatus;
     sensorStatus: SensorStatus;
     tofData: TOFData;
-    waypoints?: Waypoint[]; // Optional - backend sends but we filter it out
+    waypoints?: Waypoint[];
 }
 
 export type ControlMode = 'mission' | 'manual';
 
 interface RoverStore {
-    // Vehicle state from backend
     vehicleState: VehicleState;
-
-    // Waypoints managed separately to prevent backend overwrites
     waypoints: Waypoint[];
-
-    // UI state
     controlMode: ControlMode;
     isSocketConnected: boolean;
 
-    // Actions
+    // Optimized: Single action for full state update from socket
     setVehicleState: (state: VehicleState) => void;
+
+    // UI actions
     setControlMode: (mode: ControlMode) => void;
     setSocketConnected: (connected: boolean) => void;
     addWaypoint: (waypoint: Waypoint) => void;
@@ -168,27 +166,88 @@ const initialVehicleState: VehicleState = {
     },
 };
 
-export const useRoverStore = create<RoverStore>((set) => ({
-    vehicleState: initialVehicleState,
-    waypoints: [],
-    controlMode: 'mission',
-    isSocketConnected: false,
+// Shallow equality check for objects
+function shallowEqual<T extends object>(a: T, b: T): boolean {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+        if ((a as Record<string, unknown>)[key] !== (b as Record<string, unknown>)[key]) return false;
+    }
+    return true;
+}
 
-    setVehicleState: (state) => {
-        // Filter out waypoints from backend to prevent overwrites
-        const { waypoints: _, ...stateWithoutWaypoints } = state;
-        set({ vehicleState: stateWithoutWaypoints });
-    },
+export const useRoverStore = create<RoverStore>()(
+    subscribeWithSelector((set, get) => ({
+        vehicleState: initialVehicleState,
+        waypoints: [],
+        controlMode: 'mission',
+        isSocketConnected: false,
 
-    setControlMode: (mode) => set({ controlMode: mode }),
+        setVehicleState: (newState) => {
+            const current = get().vehicleState;
 
-    setSocketConnected: (connected) => set({ isSocketConnected: connected }),
+            // Filter out waypoints from backend
+            const { waypoints: _, ...stateWithoutWaypoints } = newState;
 
-    addWaypoint: (waypoint) => set((state) => ({
-        waypoints: [...state.waypoints, waypoint],
-    })),
+            // OPTIMIZATION: Only update slices that actually changed
+            const updates: Partial<VehicleState> = {};
 
-    clearWaypoints: () => set({ waypoints: [] }),
+            if (!shallowEqual(current.attitude, stateWithoutWaypoints.attitude)) {
+                updates.attitude = stateWithoutWaypoints.attitude;
+            }
+            if (!shallowEqual(current.gps, stateWithoutWaypoints.gps)) {
+                updates.gps = stateWithoutWaypoints.gps;
+            }
+            if (!shallowEqual(current.system, stateWithoutWaypoints.system)) {
+                updates.system = stateWithoutWaypoints.system;
+            }
+            if (!shallowEqual(current.sensorStatus, stateWithoutWaypoints.sensorStatus)) {
+                updates.sensorStatus = stateWithoutWaypoints.sensorStatus;
+            }
+            if (!shallowEqual(current.mission, stateWithoutWaypoints.mission)) {
+                updates.mission = stateWithoutWaypoints.mission;
+            }
+            if (!shallowEqual(current.tofData, stateWithoutWaypoints.tofData)) {
+                updates.tofData = stateWithoutWaypoints.tofData;
+            }
+            if (current.connected !== stateWithoutWaypoints.connected) {
+                updates.connected = stateWithoutWaypoints.connected;
+            }
+            if (current.lastHeartbeat !== stateWithoutWaypoints.lastHeartbeat) {
+                updates.lastHeartbeat = stateWithoutWaypoints.lastHeartbeat;
+            }
 
-    setWaypoints: (waypoints) => set({ waypoints }),
-}));
+            // IMU has nested calibration object - check separately
+            if (stateWithoutWaypoints.imu) {
+                const imuChanged = !shallowEqual(current.imu, stateWithoutWaypoints.imu) ||
+                    !shallowEqual(current.imu.calibration, stateWithoutWaypoints.imu.calibration);
+                if (imuChanged) {
+                    updates.imu = stateWithoutWaypoints.imu;
+                }
+            }
+
+            // Only set if something actually changed
+            if (Object.keys(updates).length > 0) {
+                set({
+                    vehicleState: {
+                        ...current,
+                        ...updates,
+                    }
+                });
+            }
+        },
+
+        setControlMode: (mode) => set({ controlMode: mode }),
+
+        setSocketConnected: (connected) => set({ isSocketConnected: connected }),
+
+        addWaypoint: (waypoint) => set((state) => ({
+            waypoints: [...state.waypoints, waypoint],
+        })),
+
+        clearWaypoints: () => set({ waypoints: [] }),
+
+        setWaypoints: (waypoints) => set({ waypoints }),
+    }))
+);

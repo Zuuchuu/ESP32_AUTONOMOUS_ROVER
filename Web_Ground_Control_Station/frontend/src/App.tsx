@@ -23,13 +23,8 @@ import {
 } from './components';
 
 function App() {
-    // Only subscribe to what App needs for LAYOUT or LOGIC
-    // NOT high-frequency data (like pitch/roll/heartbeat)
-    const {
-        waypoints,
-        controlMode,
-        setControlMode,
-    } = useRoverStore();
+    // Only subscribe to controlMode for layout decisions
+    const { controlMode, setControlMode } = useRoverStore();
 
     const {
         uploadMission,
@@ -53,14 +48,10 @@ function App() {
         }
     }, [controlMode, enableManualControl, disableManualControl]);
 
-    const handleUploadMission = () => {
-        uploadMission(waypoints);
-    };
-
     return (
         <div className="min-h-screen bg-gcs-darker relative">
-            {/* Header */}
-            <header className="absolute top-0 left-0 right-0 z-50 bg-gcs-dark/95 backdrop-blur-md border-b border-gcs-border px-4 py-3">
+            {/* Header - no blur for performance */}
+            <header className="absolute top-0 left-0 right-0 z-50 bg-gcs-dark/95 border-b border-gcs-border px-4 py-3">
                 <div className="grid grid-cols-3 items-center gap-4">
                     {/* Left: Title and Rover Status */}
                     <div className="flex items-center gap-4">
@@ -95,7 +86,7 @@ function App() {
                     <MapView allowWaypointPlacement={controlMode === 'mission'} />
 
                     {/* Left Sidebar - Telemetry (inside map) */}
-                    <div className="absolute left-4 top-12 bottom-4 w-64 z-40 overflow-y-auto space-y-3 scrollbar-thin">
+                    <div className="absolute left-4 top-12 bottom-4 w-64 z-[1000] overflow-y-auto space-y-3 scrollbar-thin pointer-events-auto">
                         <AttitudeDisplay />
                         <GPSStatus />
                         <IMUCalibration />
@@ -103,10 +94,10 @@ function App() {
                     </div>
 
                     {/* Right Sidebar - Controls (inside map) */}
-                    <div className="absolute right-4 top-16 bottom-4 w-64 z-40 overflow-y-auto scrollbar-thin">
+                    <div className="absolute right-4 top-16 bottom-4 w-64 z-[1000] overflow-y-auto scrollbar-thin pointer-events-auto">
                         {controlMode === 'mission' ? (
                             <MissionControl
-                                onUpload={handleUploadMission}
+                                onUpload={uploadMission}
                                 onStart={startMission}
                                 onResume={resumeMission}
                                 onAbort={abortMission}
@@ -123,8 +114,8 @@ function App() {
                 </div>
             </div>
 
-            {/* Footer */}
-            <footer className="absolute bottom-0 left-0 right-0 z-50 bg-gcs-dark/95 backdrop-blur-md border-t border-gcs-border px-4 py-2">
+            {/* Footer - no blur for performance */}
+            <footer className="absolute bottom-0 left-0 right-0 z-50 bg-gcs-dark/95 border-t border-gcs-border px-4 py-2">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                     <span>ESP32 Autonomous Rover Ground Control Station v1.1</span>
                     <LastHeartbeatDisplay />

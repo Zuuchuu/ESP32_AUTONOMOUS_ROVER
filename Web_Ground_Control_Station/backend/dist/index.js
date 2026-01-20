@@ -34,10 +34,10 @@ const io = new socket_io_1.Server(httpServer, {
 });
 // Initialize vehicle state store
 const vehicleStore = new vehicleStore_js_1.VehicleStore();
-// Initialize rover connection
-const roverConnection = new roverConnection_js_1.RoverConnection(config_js_1.config.ROVER_HOST, config_js_1.config.ROVER_PORT);
+// Initialize rover connection (let allows dynamic reconnection)
+let roverConnection = new roverConnection_js_1.RoverConnection(config_js_1.config.ROVER_HOST, config_js_1.config.ROVER_PORT);
 // Setup Socket.IO event handlers
-(0, socketHandlers_js_1.setupSocketHandlers)(io, vehicleStore, roverConnection);
+(0, socketHandlers_js_1.setupSocketHandlers)(io, vehicleStore, () => roverConnection);
 // Rover connection event handlers
 roverConnection.on('connected', () => {
     vehicleStore.setConnected(true);
@@ -53,13 +53,11 @@ roverConnection.on('telemetry', (partialState) => {
 roverConnection.on('error', (error) => {
     console.error('[Main] Rover connection error:', error.message);
 });
-// Broadcast state to all connected clients at regular interval
-let lastBroadcast = 0;
+// Broadcast state to all connected clients at regular interval (only if changed)
 setInterval(() => {
-    const now = Date.now();
-    if (now - lastBroadcast >= config_js_1.config.TELEMETRY_BROADCAST_INTERVAL) {
+    if (vehicleStore.isDirty) {
         io.emit('state', vehicleStore.getState());
-        lastBroadcast = now;
+        vehicleStore.clearDirty();
     }
 }, config_js_1.config.TELEMETRY_BROADCAST_INTERVAL);
 // Health check endpoint
@@ -77,9 +75,39 @@ app.get('/state', (req, res) => {
 // Manual rover connection control
 app.post('/rover/connect', (req, res) => {
     const { host, port } = req.body;
-    // Could implement dynamic host/port here
+    // Validate inputs
+    if (!host || !port) {
+        return res.status(400).json({
+            success: false,
+            message: 'Host and port are required'
+        });
+    }
+    // Disconnect old connection
+    roverConnection.disconnect();
+    // Create new connection
+    roverConnection = new roverConnection_js_1.RoverConnection(host, parseInt(port, 10));
+    // Set up event handlers for new connection
+    roverConnection.on('connected', () => {
+        vehicleStore.setConnected(true);
+        io.emit('connection:status', { connected: true });
+        console.log('[Main] Rover connected successfully');
+    });
+    roverConnection.on('disconnected', () => {
+        vehicleStore.setConnected(false);
+        io.emit('connection:status', { connected: false });
+    });
+    roverConnection.on('telemetry', (partialState) => {
+        vehicleStore.update(partialState);
+    });
+    roverConnection.on('error', (error) => {
+        console.error('[Main] Rover connection error:', error.message);
+    });
+    // Attempt connection
     roverConnection.connect();
-    res.json({ message: 'Connection initiated' });
+    res.json({
+        success: true,
+        message: `Connecting to ${host}:${port}...`
+    });
 });
 app.post('/rover/disconnect', (req, res) => {
     roverConnection.disconnect();
@@ -94,9 +122,8 @@ httpServer.listen(config_js_1.config.SERVER_PORT, () => {
     console.log(`  Socket.IO:      ws://localhost:${config_js_1.config.SERVER_PORT}`);
     console.log(`  Rover Target:   ${config_js_1.config.ROVER_HOST}:${config_js_1.config.ROVER_PORT}`);
     console.log('='.repeat(60));
-    // Attempt initial connection to rover
-    console.log('[Main] Attempting to connect to rover...');
-    roverConnection.connect();
+    // Connection will be initiated manually via UI
+    console.log('[Main] Waiting for manual connection request from UI...');
 });
 // Graceful shutdown
 process.on('SIGINT', () => {

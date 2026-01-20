@@ -94,8 +94,14 @@ void WiFiTask::processCommand(const String& command) {
     
     // New mission-first protocol
     if (jsonDoc["command"].is<const char*>()) {
-        String cmd = jsonDoc["command"].as<const char*>(); // e.g., start_mission, pause_mission, abort_mission, resume_mission
+        String cmd = jsonDoc["command"].as<const char*>(); // e.g., upload_mission, start_mission, pause_mission, abort_mission, resume_mission
 
+        // Upload mission - load waypoints but don't start navigation
+        if (cmd == "upload_mission") {
+            processUploadMission();
+            return;
+        }
+        // Start mission - legacy command that uploads AND starts (for backward compatibility)
         if (cmd == "start_mission") {
             processStartMission();
             return;
@@ -182,6 +188,65 @@ void WiFiTask::processWaypoints(const JsonArray& waypoints) {
 }
 
 // ========================= Mission protocol handlers =========================
+
+void WiFiTask::processUploadMission() {
+    // Expect mission payload fields: mission_id, waypoints[], parameters{}
+    if (!(jsonDoc["mission_id"].is<const char*>() || jsonDoc["mission_id"].is<String>()) ||
+        !jsonDoc["waypoints"].is<JsonArray>() ||
+        !jsonDoc["parameters"].is<JsonObject>()) {
+        sendError("Missing mission fields (mission_id, waypoints, parameters)");
+        return;
+    }
+
+    // 1) Store mission id
+    sharedData.setMissionId(String((const char*)jsonDoc["mission_id"]));
+
+    // 2) Waypoints
+    if (jsonDoc["waypoints"].is<JsonArray>()) {
+        JsonArray waypoints = jsonDoc["waypoints"].as<JsonArray>();
+        processWaypoints(waypoints);
+    }
+
+    // 3) Path segments (optional)
+    if (jsonDoc["path_segments"].is<JsonArray>()) {
+        JsonArray segments = jsonDoc["path_segments"].as<JsonArray>();
+        const int maxSeg = min((int)segments.size(), MAX_WAYPOINTS - 1);
+        PathSegment segBuf[MAX_WAYPOINTS - 1];
+        int segCount = 0;
+        for (int i = 0; i < maxSeg; i++) {
+            JsonObject s = segments[i];
+            PathSegment seg;
+            seg.start_lat = s["start_lat"] | 0.0;
+            seg.start_lon = s["start_lon"] | 0.0;
+            seg.end_lat   = s["end_lat"]   | 0.0;
+            seg.end_lon   = s["end_lon"]   | 0.0;
+            seg.distance  = s["distance"]  | 0.0;
+            seg.bearing   = s["bearing"]   | 0.0;
+            seg.speed     = s["speed"]     | 1.0;
+            segBuf[segCount++] = seg;
+        }
+        if (segCount > 0) {
+            sharedData.setPathSegments(segBuf, segCount);
+        }
+    }
+
+    // 4) Mission parameters
+    JsonObject params = jsonDoc["parameters"].as<JsonObject>();
+    MissionParameters mp;
+    mp.speed_mps = params["speed_mps"] | 1.0;
+    mp.cte_threshold_m = params["cte_threshold_m"] | 2.0;
+    mp.mission_timeout_s = params["mission_timeout_s"] | 3600;
+    mp.total_distance_m = params["total_distance_m"] | 0.0;
+    mp.estimated_duration_s = params["estimated_duration_s"] | 0;
+    sharedData.setMissionParameters(mp);
+
+    // 5) Transition to PLANNED state (ready but not started)
+    sharedData.setMissionState(MISSION_PLANNED);
+
+    // NOTE: Do NOT start navigation here - wait for resume_mission command
+    Serial.println("[WiFi] Mission uploaded and ready (PLANNED state)");
+    sendResponse("{\"status\":\"success\",\"message\":\"Mission uploaded and ready\"}");
+}
 
 void WiFiTask::processStartMission() {
     // Expect mission payload fields: mission_id, waypoints[], path_segments[], parameters{}

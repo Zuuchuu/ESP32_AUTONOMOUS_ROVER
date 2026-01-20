@@ -12,7 +12,7 @@ NavigationTask::NavigationTask()
     : pidSetpoint(0.0), pidInput(0.0), pidOutput(0.0), 
       pidError(0.0), pidLastError(0.0), pidIntegral(0.0), pidDerivative(0.0),
       isNavigating(false), currentWaypointIndex(0),
-      targetLatitude(0.0), targetLongitude(0.0), targetBearing(0.0), crossTrackError(0.0),
+      targetLatitude(0.0), targetLongitude(0.0), targetBearing(0.0), distanceToTarget(0.0), crossTrackError(0.0),
       leftMotorSpeed(0), rightMotorSpeed(0), baseSpeed(BASE_SPEED),
       lastUpdateTime(0), navigationUpdateInterval(100) {
 }
@@ -77,7 +77,15 @@ void NavigationTask::run() {
              stopNavigation();
         }
 
-        // 3. Motor PID Update (Low-Level)
+        // 3. Navigation Status Update (Telemetry)
+        // Run periodically to update GCS and OLED (e.g., 5Hz)
+        static unsigned long lastStateUpdate = 0;
+        if (now - lastStateUpdate >= 200) {
+            updateSharedState();
+            lastStateUpdate = now;
+        }
+
+        // 4. Motor PID Update (Low-Level)
         // Ensure this runs frequently for smooth control
         if (isNavigating) {
              if (now - lastPIDUpdate >= pidInterval) {
@@ -144,8 +152,25 @@ void NavigationTask::processNavigation() {
         targetLatitude, targetLongitude
     );
     
-    // Calculate cross-track error
-    calculateCrossTrackError();
+    // Calculate distance to current waypoint
+    distanceToTarget = calculateDistance(
+        currentPosition.latitude, currentPosition.longitude,
+        targetLatitude, targetLongitude
+    );
+    
+    // Calculate bearing from current position to target
+    double bearing = calculateBearing(
+        currentPosition.latitude, currentPosition.longitude,
+        targetLatitude, targetLongitude
+    );
+    
+    // Get current heading
+    sharedData.getIMUData(currentIMUData);
+    double currentHeading = currentIMUData.heading;
+    
+    // Calculate cross-track error (perpendicular distance from path)
+    double headingDiff = normalizeAngle(bearing - currentHeading);
+    crossTrackError = distanceToTarget * sin(radians(headingDiff));
     
     // Calculate PID control
     calculatePID();
@@ -154,7 +179,7 @@ void NavigationTask::processNavigation() {
     updateMotorSpeeds();
     
     // Check if waypoint reached
-    if (isWaypointReached()) {
+    if (distanceToTarget <= WAYPOINT_THRESHOLD) {
         moveToNextWaypoint();
     }
     
@@ -163,6 +188,39 @@ void NavigationTask::processNavigation() {
     if (currentTime - lastPrintTime > 5000) { // Print every 5 seconds
         printNavigationInfo();
         lastPrintTime = currentTime;
+    }
+}
+    
+void NavigationTask::updateSharedState() {
+    // If not navigating, we still want to calculate distance for telemetry if waypoints exist
+    if (!isNavigating && sharedData.hasWaypoints()) {
+        GPSPosition currentPosition;
+        sharedData.getPosition(currentPosition);
+        
+        if (currentPosition.isValid) {
+            Waypoint currentWaypoint;
+            // Ensure index is valid
+            int idx = currentWaypointIndex;
+            if (idx >= sharedData.getWaypointCount()) idx = sharedData.getWaypointCount() - 1;
+            
+            if (sharedData.getWaypoint(idx, currentWaypoint)) {
+                distanceToTarget = calculateDistance(
+                    currentPosition.latitude, currentPosition.longitude,
+                    currentWaypoint.latitude, currentWaypoint.longitude
+                );
+            }
+        }
+    }
+    
+    // Sync to SharedData
+    RoverState state;
+    if (sharedData.getRoverState(state)) {
+        state.currentWaypointIndex = currentWaypointIndex;
+        state.distanceToTarget = distanceToTarget;
+        state.crossTrackError = crossTrackError;
+        state.isNavigating = isNavigating;
+        state.currentSpeed = (leftMotorSpeed + rightMotorSpeed) / 2.0; // Approximation
+        sharedData.setRoverState(state);
     }
 }
 

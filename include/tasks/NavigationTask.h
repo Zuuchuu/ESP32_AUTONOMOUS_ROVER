@@ -31,6 +31,7 @@ private:
     double targetLatitude;
     double targetLongitude;
     double targetBearing;
+    double distanceToTarget;
     double crossTrackError;
     
     // Motor control
@@ -44,6 +45,7 @@ private:
     
     // Private methods
     void processNavigation();
+    void updateSharedState();
     void calculatePID();
     void calculateCrossTrackError();
     void updateMotorSpeeds();

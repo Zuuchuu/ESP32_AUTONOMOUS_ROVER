@@ -61,13 +61,11 @@ roverConnection.on('error', (error) => {
     console.error('[Main] Rover connection error:', error.message);
 });
 
-// Broadcast state to all connected clients at regular interval
-let lastBroadcast = 0;
+// Broadcast state to all connected clients at regular interval (only if changed)
 setInterval(() => {
-    const now = Date.now();
-    if (now - lastBroadcast >= config.TELEMETRY_BROADCAST_INTERVAL) {
+    if (vehicleStore.isDirty) {
         io.emit('state', vehicleStore.getState());
-        lastBroadcast = now;
+        vehicleStore.clearDirty();
     }
 }, config.TELEMETRY_BROADCAST_INTERVAL);
 

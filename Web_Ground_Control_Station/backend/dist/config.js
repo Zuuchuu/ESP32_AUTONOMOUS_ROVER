@@ -12,7 +12,7 @@ exports.config = {
     ROVER_HOST: process.env.ROVER_HOST || '192.168.1.100',
     ROVER_PORT: parseInt(process.env.ROVER_PORT || '8080', 10),
     // Telemetry broadcast rate (ms)
-    TELEMETRY_BROADCAST_INTERVAL: 50, // 20Hz
+    TELEMETRY_BROADCAST_INTERVAL: 100, // 10Hz
     // Connection retry settings
     ROVER_RECONNECT_DELAY: 5000,
     // CORS origins (frontend URL)

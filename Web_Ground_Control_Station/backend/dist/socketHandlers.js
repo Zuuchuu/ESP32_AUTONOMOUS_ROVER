@@ -6,7 +6,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupSocketHandlers = setupSocketHandlers;
-function setupSocketHandlers(io, vehicleStore, roverConnection) {
+function setupSocketHandlers(io, vehicleStore, getRoverConnection) {
     io.on('connection', (socket) => {
         console.log(`[Socket] Client connected: ${socket.id}`);
         // Send current state immediately on connect
@@ -15,9 +15,9 @@ function setupSocketHandlers(io, vehicleStore, roverConnection) {
         socket.on('mission:upload', (waypoints) => {
             console.log(`[Socket] Mission upload: ${waypoints.length} waypoints`);
             vehicleStore.setWaypoints(waypoints);
-            // Format waypoints for ESP32
+            // Format waypoints for ESP32 - upload only, don't auto-start
             const command = {
-                command: 'start_mission',
+                command: 'upload_mission',
                 mission_id: `mission_${Date.now()}`,
                 waypoints: waypoints.map(wp => ({
                     lat: wp.lat,
@@ -29,7 +29,7 @@ function setupSocketHandlers(io, vehicleStore, roverConnection) {
                     mission_timeout_s: 3600,
                 },
             };
-            if (roverConnection.sendCommand(command)) {
+            if (getRoverConnection().sendCommand(command)) {
                 socket.emit('mission:uploaded', { success: true, count: waypoints.length });
             }
             else {
@@ -38,32 +38,36 @@ function setupSocketHandlers(io, vehicleStore, roverConnection) {
         });
         // Handle mission control commands
         socket.on('mission:start', () => {
-            roverConnection.sendCommand({ command: 'start' });
+            // Start mission uses resume_mission to begin navigation
+            getRoverConnection().sendCommand({ command: 'resume_mission' });
         });
         socket.on('mission:pause', () => {
-            roverConnection.sendCommand({ command: 'pause_mission' });
+            getRoverConnection().sendCommand({ command: 'pause_mission' });
         });
         socket.on('mission:resume', () => {
-            roverConnection.sendCommand({ command: 'resume_mission' });
+            getRoverConnection().sendCommand({ command: 'resume_mission' });
         });
         socket.on('mission:abort', () => {
-            roverConnection.sendCommand({ command: 'abort_mission' });
+            // Temporary stop - use pause_mission
+            getRoverConnection().sendCommand({ command: 'pause_mission' });
         });
         socket.on('mission:clear', () => {
+            // Full cancel - abort on rover and clear waypoints
+            getRoverConnection().sendCommand({ command: 'abort_mission' });
             vehicleStore.clearWaypoints();
             socket.emit('state', vehicleStore.getState());
         });
         // Handle manual control
         socket.on('manual:enable', () => {
             console.log('[Socket] Manual control enabled');
-            roverConnection.sendCommand({ command: 'enable_manual' });
+            getRoverConnection().sendCommand({ command: 'enable_manual' });
         });
         socket.on('manual:disable', () => {
             console.log('[Socket] Manual control disabled');
-            roverConnection.sendCommand({ command: 'disable_manual' });
+            getRoverConnection().sendCommand({ command: 'disable_manual' });
         });
         socket.on('manual:move', (data) => {
-            roverConnection.sendCommand({
+            getRoverConnection().sendCommand({
                 command: 'manual_move',
                 direction: data.direction,
                 speed: data.speed,

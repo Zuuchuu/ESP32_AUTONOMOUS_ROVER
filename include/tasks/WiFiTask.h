@@ -27,7 +27,8 @@ private:
     void processSpeedCommand(int speed);
     
     // Mission planning/execution commands (new protocol)
-    void processStartMission();
+    void processUploadMission();  // Upload waypoints only (no auto-start)
+    void processStartMission();   // Legacy: upload + auto-start
     void processPauseMission();
     void processAbortMission();
     void processResumeMission();

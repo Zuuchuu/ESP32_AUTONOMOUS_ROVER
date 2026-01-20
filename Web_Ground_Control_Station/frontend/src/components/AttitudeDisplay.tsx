@@ -2,22 +2,70 @@
  * Attitude Display Component
  * 
  * Combined display showing pitch/roll (artificial horizon) and heading (compass) side-by-side.
+ * OPTIMIZED: Uses CSS custom properties and GPU-accelerated animations for smooth 60fps rendering.
  */
 
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { useRoverStore } from '../store/roverStore';
+
+// Pre-computed pitch ladder marks for performance (±60° with 10° increments)
+const PITCH_MARKS = [-60, -50, -40, -30, -20, -10, 10, 20, 30, 40, 50, 60];
+
+// Pre-computed cardinal directions
+const CARDINALS = [
+    { label: 'N', angle: 0, color: '#ef4444' },  // red
+    { label: 'E', angle: 90, color: '#cbd5e1' }, // slate-300
+    { label: 'S', angle: 180, color: '#cbd5e1' },
+    { label: 'W', angle: 270, color: '#cbd5e1' },
+] as const;
+
+// Pre-computed tick marks (36 ticks, 10° apart)
+const TICK_MARKS = Array.from({ length: 36 }, (_, i) => ({
+    angle: i * 10,
+    isMajor: i % 9 === 0,
+}));
 
 export function AttitudeDisplay() {
     // Select specific values to minimize re-renders
     const pitch = useRoverStore(state => state.vehicleState.attitude.pitch);
     const roll = useRoverStore(state => state.vehicleState.attitude.roll);
-    const heading = useRoverStore(state => state.vehicleState.attitude.yaw); // yaw is heading
+    const heading = useRoverStore(state => state.vehicleState.attitude.yaw);
 
     // Clamp pitch to reasonable display range
     const clampedPitch = Math.max(-60, Math.min(60, pitch));
     const pitchOffset = clampedPitch * 2;
 
-    // Normalize heading
+    // Normalize heading (0-360)
     const normalizedHeading = ((heading % 360) + 360) % 360;
+
+    // Track smooth compass rotation (prevent 360->0 spin)
+    const previousHeadingRef = useRef(normalizedHeading);
+    const accumulatedRotationRef = useRef(0);
+    const [smoothHeading, setSmoothHeading] = useState(0);
+
+    useEffect(() => {
+        const prev = previousHeadingRef.current;
+        const current = normalizedHeading;
+        let delta = current - prev;
+
+        // Detect 360°/0° boundary crossing
+        if (delta > 180) {
+            // Crossed from 0° to 360° (e.g., 1° -> 359°)
+            delta -= 360;
+        } else if (delta < -180) {
+            // Crossed from 360° to 0° (e.g., 359° -> 1°)
+            delta += 360;
+        }
+
+        // Accumulate rotation for smooth animation
+        accumulatedRotationRef.current += delta;
+        setSmoothHeading(-accumulatedRotationRef.current);
+
+        previousHeadingRef.current = current;
+    }, [normalizedHeading]);
+
+    // Memoize cardinal direction text
+    const cardinalText = useMemo(() => getCardinalDirection(normalizedHeading), [normalizedHeading]);
 
     return (
         <div className="glass-card p-3">
@@ -29,141 +77,105 @@ export function AttitudeDisplay() {
                 {/* Artificial Horizon - Pitch/Roll */}
                 <div className="flex flex-col items-center">
                     <div
-                        className="w-20 h-20 rounded-full overflow-hidden border-3 border-gcs-border relative"
-                        style={{ transform: `rotate(${-roll}deg)` }}
+                        className="attitude-horizon"
+                        style={{
+                            '--roll': `${-roll}deg`,
+                            '--pitch-offset': `${pitchOffset}px`,
+                        } as React.CSSProperties}
                     >
-                        {/* Sky */}
-                        <div
-                            className="absolute inset-0 transition-transform duration-100"
-                            style={{
-                                background: 'linear-gradient(to bottom, #3b82f6 0%, #60a5fa 100%)',
-                                transform: `translateY(${pitchOffset}px)`,
-                            }}
-                        />
+                        {/* Sky gradient */}
+                        <div className="attitude-sky" />
 
-                        {/* Ground */}
-                        <div
-                            className="absolute inset-0 transition-transform duration-100"
-                            style={{
-                                background: 'linear-gradient(to bottom, #78350f 0%, #451a03 100%)',
-                                top: '50%',
-                                transform: `translateY(${pitchOffset}px)`,
-                            }}
-                        />
-
-                        {/* Pitch ladder marks */}
-                        <div
-                            className="absolute inset-0 transition-transform duration-100"
-                            style={{ transform: `translateY(${pitchOffset}px)` }}
-                        >
-                            {/* Pitch marks at ±10°, ±20°, ±30° */}
-                            {[-30, -20, -10, 10, 20, 30].map((deg) => {
-                                // The original instruction had `(deg / clampedPitch) * pitchOffset` which is incorrect.
-                                // The offset should be relative to the center of the display, not scaled by clampedPitch.
-                                // A fixed scaling factor (e.g., 0.67px per degree) is more appropriate for a visual ladder.
-                                return (
-                                    <div
-                                        key={deg}
-                                        className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1"
-                                        style={{ top: `calc(50% - ${deg * 0.67}px)` }}
-                                    >
-                                        <div className="w-4 h-px bg-white/80" />
-                                        <span className="text-[8px] text-white/80 font-mono">{Math.abs(deg)}</span>
-                                        <div className="w-4 h-px bg-white/80" />
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        {/* Ground gradient */}
+                        <div className="attitude-ground" />
 
                         {/* Horizon line */}
-                        <div
-                            className="absolute left-0 right-0 h-0.5 bg-white"
-                            style={{
-                                top: '50%',
-                                transform: `translateY(${pitchOffset}px)`,
-                                boxShadow: '0 0 4px rgba(255,255,255,0.5)',
-                            }}
-                        />
+                        <div className="attitude-horizon-line" />
 
-                        {/* Center reference (fixed) */}
-                        <div
-                            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                        >
-                            <div className="w-2 h-2 rounded-full bg-yellow-400 border border-white shadow-lg" />
-                            <div className="absolute w-10 h-px bg-yellow-400" />
+                        {/* Pitch ladder marks */}
+                        <div className="attitude-ladder">
+                            {PITCH_MARKS.map((deg) => (
+                                <div
+                                    key={deg}
+                                    className="attitude-ladder-mark"
+                                    style={{ '--deg-offset': `${deg * 0.67}px` } as React.CSSProperties}
+                                >
+                                    <div className="attitude-ladder-line" />
+                                    <span className="attitude-ladder-text">{Math.abs(deg)}</span>
+                                    <div className="attitude-ladder-line" />
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Center aircraft symbol (fixed - doesn't rotate) */}
+                        <div className="attitude-aircraft">
+                            <div className="attitude-aircraft-dot" />
+                            <div className="attitude-aircraft-wings" />
                         </div>
                     </div>
 
                     {/* Pitch/Roll values */}
                     <div className="mt-2 text-center">
-                        <div className="text-xs text-slate-400">P: <span className="text-gcs-primary font-mono">{pitch.toFixed(1)}°</span></div>
-                        <div className="text-xs text-slate-400">R: <span className="text-gcs-primary font-mono">{roll.toFixed(1)}°</span></div>
+                        <div className="text-xs text-slate-400">
+                            P: <span className="text-gcs-primary font-mono tabular-nums">{pitch.toFixed(1)}°</span>
+                        </div>
+                        <div className="text-xs text-slate-400">
+                            R: <span className="text-gcs-primary font-mono tabular-nums">{roll.toFixed(1)}°</span>
+                        </div>
                     </div>
                 </div>
 
-
                 {/* Compass - Heading */}
                 <div className="flex flex-col items-center">
-                    <div className="relative w-20 h-20">
-                        {/* Outer ring */}
-                        <div className="absolute inset-0 rounded-full border-2 border-gcs-border bg-gcs-dark">
-                            {/* Rotating compass */}
+                    <div className="compass-container">
+                        {/* Outer ring / bezel */}
+                        <div className="compass-bezel">
+                            {/* Rotating compass rose */}
                             <div
-                                className="absolute inset-1 rounded-full transition-transform duration-200"
-                                style={{ transform: `rotate(${-normalizedHeading}deg)` }}
+                                className="compass-rose-rotating"
+                                style={{ '--heading': `${smoothHeading}deg` } as React.CSSProperties}
                             >
-                                {/* Cardinal markers */}
-                                {[
-                                    { label: 'N', angle: 0, color: 'text-gcs-danger' },
-                                    { label: 'E', angle: 90, color: 'text-slate-300' },
-                                    { label: 'S', angle: 180, color: 'text-slate-300' },
-                                    { label: 'W', angle: 270, color: 'text-slate-300' },
-                                ].map(({ label, angle, color }) => (
+                                {/* Tick marks */}
+                                {TICK_MARKS.map(({ angle, isMajor }) => (
                                     <div
-                                        key={label}
-                                        className="absolute"
-                                        style={{
-                                            left: '50%',
-                                            top: '50%',
-                                            transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-32px) rotate(${-angle + normalizedHeading}deg)`
-                                        }}
+                                        key={angle}
+                                        className="compass-tick"
+                                        style={{ '--tick-angle': `${angle}deg` } as React.CSSProperties}
                                     >
-                                        <span className={`block text-[10px] font-bold ${color}`}>
-                                            {label}
-                                        </span>
+                                        <div className={isMajor ? 'compass-tick-major' : 'compass-tick-minor'} />
                                     </div>
                                 ))}
 
-                                {/* Tick marks */}
-                                {Array.from({ length: 36 }).map((_, i) => (
+                                {/* Cardinal markers */}
+                                {CARDINALS.map(({ label, angle, color }) => (
                                     <div
-                                        key={i}
-                                        className="absolute left-1/2 top-1/2"
+                                        key={label}
+                                        className="compass-cardinal"
                                         style={{
-                                            transform: `translate(-50%, -50%) rotate(${i * 10}deg) translateY(-36px)`,
-                                        }}
+                                            '--cardinal-angle': `${angle}deg`,
+                                            '--counter-rotate': `${-angle - smoothHeading}deg`,
+                                            color,
+                                        } as React.CSSProperties}
                                     >
-                                        <div
-                                            className={`w-0.5 ${i % 9 === 0 ? 'h-2 bg-slate-400' : 'h-1 bg-slate-600'
-                                                }`}
-                                        />
+                                        <span className="compass-cardinal-text">{label}</span>
                                     </div>
                                 ))}
                             </div>
 
                             {/* Center pointer (fixed) */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[8px] border-transparent border-b-gcs-danger"
-                                    style={{ transform: 'translateY(-3px)' }} />
-                                <div className="absolute w-1.5 h-1.5 rounded-full bg-gcs-card border border-gcs-border" />
+                            <div className="compass-center-pointer">
+                                <div className="compass-pointer-triangle" />
+                                <div className="compass-pointer-dot" />
                             </div>
                         </div>
                     </div>
 
                     {/* Heading value */}
                     <div className="mt-1.5 text-center">
-                        <div className="text-base font-mono text-gcs-primary">{normalizedHeading.toFixed(0)}°</div>
-                        <div className="text-[10px] text-slate-400">{getCardinalDirection(normalizedHeading)}</div>
+                        <div className="text-base font-mono text-gcs-primary tabular-nums">
+                            {normalizedHeading.toFixed(0)}°
+                        </div>
+                        <div className="text-[10px] text-slate-400">{cardinalText}</div>
                     </div>
                 </div>
             </div>

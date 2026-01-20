@@ -1,135 +1,44 @@
 /**
- * Socket.IO Client Hook
+ * Socket Hook (Simplified wrapper around socketService)
  * 
- * Manages WebSocket connection to backend and syncs state.
+ * OPTIMIZED: Uses singleton socketService instead of managing connection in React.
+ * This hook just provides a convenient interface for components.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { useRoverStore, VehicleState, Waypoint } from '../store/roverStore';
-
-const SOCKET_URL = import.meta.env.PROD
-    ? window.location.origin
-    : 'http://localhost:3001';
+import { useEffect } from 'react';
+import { useRoverStore } from '../store/roverStore';
+import {
+    initializeSocket,
+    socketCommands,
+    connectRover,
+    disconnectRover,
+} from '../services/socketService';
 
 export function useSocket() {
-    const socketRef = useRef<Socket | null>(null);
-    const { setVehicleState, setSocketConnected } = useRoverStore();
-
+    // Initialize socket on mount (idempotent - only runs once)
     useEffect(() => {
-        // Create socket connection
-        const socket = io(SOCKET_URL, {
-            transports: ['websocket'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: Infinity,
-        });
-
-        socketRef.current = socket;
-
-        socket.on('connect', () => {
-            console.log('[Socket] Connected to backend');
-            setSocketConnected(true);
-        });
-
-        socket.on('disconnect', () => {
-            console.log('[Socket] Disconnected from backend');
-            setSocketConnected(false);
-        });
-
-        socket.on('state', (state: VehicleState) => {
-            setVehicleState(state);
-        });
-
-        socket.on('connection:status', (data: { connected: boolean }) => {
-            console.log('[Socket] Rover connection status:', data.connected);
-        });
-
-        return () => {
-            socket.disconnect();
-        };
-    }, [setVehicleState, setSocketConnected]);
-
-    // Mission commands
-    const uploadMission = useCallback((waypoints: Waypoint[]) => {
-        socketRef.current?.emit('mission:upload', waypoints);
+        initializeSocket();
+        // No cleanup - socket persists for app lifetime
     }, []);
 
-    const startMission = useCallback(() => {
-        socketRef.current?.emit('mission:start');
-    }, []);
-
-    const pauseMission = useCallback(() => {
-        socketRef.current?.emit('mission:pause');
-    }, []);
-
-    const resumeMission = useCallback(() => {
-        socketRef.current?.emit('mission:resume');
-    }, []);
-
-    const abortMission = useCallback(() => {
-        socketRef.current?.emit('mission:abort');
-    }, []);
-
-    const clearMission = useCallback(() => {
-        socketRef.current?.emit('mission:clear');
-    }, []);
-
-    // Manual control commands
-    const enableManualControl = useCallback(() => {
-        socketRef.current?.emit('manual:enable');
-    }, []);
-
-    const disableManualControl = useCallback(() => {
-        socketRef.current?.emit('manual:disable');
-    }, []);
-
-    const sendManualMove = useCallback((direction: string, speed: number) => {
-        socketRef.current?.emit('manual:move', { direction, speed });
-    }, []);
-
-    // Rover connection control
-    const connectRover = useCallback(async (host: string, port: number) => {
-        try {
-            const response = await fetch(`${SOCKET_URL}/rover/connect`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ host, port }),
-            });
-            const data = await response.json();
-            console.log('[Socket] Connect response:', data);
-            return data;
-        } catch (error) {
-            console.error('[Socket] Connect error:', error);
-            return { success: false, message: 'Failed to connect' };
-        }
-    }, []);
-
-    const disconnectRover = useCallback(async () => {
-        try {
-            const response = await fetch(`${SOCKET_URL}/rover/disconnect`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
-            const data = await response.json();
-            console.log('[Socket] Disconnect response:', data);
-            return data;
-        } catch (error) {
-            console.error('[Socket] Disconnect error:', error);
-            return { success: false, message: 'Failed to disconnect' };
-        }
-    }, []);
+    // Get stable waypoints reference for upload
+    const waypoints = useRoverStore((state) => state.waypoints);
 
     return {
-        uploadMission,
-        startMission,
-        pauseMission,
-        resumeMission,
-        abortMission,
-        clearMission,
-        enableManualControl,
-        disableManualControl,
-        sendManualMove,
+        // Mission commands
+        uploadMission: () => socketCommands.uploadMission(waypoints),
+        startMission: socketCommands.startMission,
+        pauseMission: socketCommands.pauseMission,
+        resumeMission: socketCommands.resumeMission,
+        abortMission: socketCommands.abortMission,
+        clearMission: socketCommands.clearMission,
+
+        // Manual control
+        enableManualControl: socketCommands.enableManualControl,
+        disableManualControl: socketCommands.disableManualControl,
+        sendManualMove: socketCommands.sendManualMove,
+
+        // Rover connection
         connectRover,
         disconnectRover,
     };

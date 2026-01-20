@@ -7,6 +7,28 @@
   background: #1e293b;
 }
 
+/* Fix z-index for overlay sidebars above Leaflet */
+.leaflet-pane,
+.leaflet-map-pane,
+.leaflet-tile-pane,
+.leaflet-overlay-pane,
+.leaflet-shadow-pane,
+.leaflet-marker-pane,
+.leaflet-tooltip-pane,
+.leaflet-popup-pane {
+  z-index: auto !important;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 500 !important;
+}
+
+/* Override Leaflet container stacking context */
+.leaflet-container {
+  z-index: 0;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -31,15 +53,16 @@
   width: 4px;
 }
 
-/* Overlay sidebar styling */
+/* Overlay sidebar styling (no blur for performance) */
 .sidebar-overlay {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.95);
+  /* Removed backdrop-filter: blur for performance */
 }
 
-/* Glassmorphism card effect */
+/* Performance-optimized card effect (no blur) */
 .glass-card {
-  @apply bg-gcs-card/80 backdrop-blur-md border border-gcs-border rounded-xl;
+  @apply bg-gcs-card/95 border border-gcs-border rounded-xl;
+  /* Removed backdrop-blur for performance - GPU compositing was causing lag */
 }
 
 /* Status indicator animations */
@@ -61,15 +84,144 @@
 }
 
 /* Attitude indicator styles */
-.attitude-indicator {
-  @apply relative overflow-hidden rounded-full;
-  background: linear-gradient(to bottom, #60a5fa 0%, #60a5fa 50%, #854d0e 50%, #854d0e 100%);
+.attitude-horizon {
+  @apply relative w-20 h-20 rounded-full overflow-hidden;
+  border: 3px solid var(--color-gcs-border, #334155);
+  transform: rotate(var(--roll, 0deg));
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.attitude-sky {
+  @apply absolute inset-0;
+  background: linear-gradient(to bottom, #3b82f6 0%, #60a5fa 100%);
+  transform: translate3d(0, var(--pitch-offset, 0px), 0);
+  transition: transform 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform;
+  /* Extend background to ensure full coverage */
+  height: 200%;
+  top: -50%;
+}
+
+.attitude-ground {
+  @apply absolute inset-0;
+  background: linear-gradient(to bottom, #78350f 0%, #451a03 100%);
+  transform: translate3d(0, var(--pitch-offset, 0px), 0);
+  transition: transform 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform;
+  /* Extend background to ensure full coverage */
+  height: 200%;
+  top: 50%;
+}
+
+.attitude-horizon-line {
+  @apply absolute left-0 right-0 h-0.5 bg-white;
+  top: 50%;
+  transform: translate3d(0, var(--pitch-offset, 0px), 0);
+  transition: transform 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  will-change: transform;
+}
+
+.attitude-ladder {
+  @apply absolute inset-0;
+  transform: translate3d(0, var(--pitch-offset, 0px), 0);
+  transition: transform 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform;
+}
+
+.attitude-ladder-mark {
+  @apply absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5;
+  top: calc(50% - var(--deg-offset, 0px));
+}
+
+.attitude-ladder-line {
+  @apply w-3 h-px bg-white/70;
+}
+
+.attitude-ladder-text {
+  @apply text-[7px] text-white/70 font-mono;
+}
+
+.attitude-aircraft {
+  @apply absolute inset-0 flex items-center justify-center pointer-events-none;
+  /* Counter-rotate to stay fixed while horizon rotates */
+  transform: rotate(calc(-1 * var(--roll, 0deg)));
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.attitude-aircraft-dot {
+  @apply w-2.5 h-2.5 rounded-full bg-yellow-400 border-2 border-white shadow-lg;
+}
+
+.attitude-aircraft-wings {
+  @apply absolute w-12 h-0.5 bg-yellow-400;
+  box-shadow: 0 0 4px rgba(250, 204, 21, 0.5);
 }
 
 /* Compass styles */
-.compass-rose {
-  @apply relative rounded-full border-4 border-gcs-border;
-  background: conic-gradient(from 0deg, #94a3b8, #64748b);
+.compass-container {
+  @apply relative w-20 h-20;
+}
+
+.compass-bezel {
+  @apply absolute inset-0 rounded-full border-2 border-gcs-border;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.compass-rose-rotating {
+  @apply absolute inset-1 rounded-full;
+  transform: rotate3d(0, 0, 1, var(--heading, 0deg));
+  transition: transform 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  will-change: transform;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.compass-tick {
+  @apply absolute left-1/2 top-1/2;
+  transform: translate(-50%, -50%) rotate(var(--tick-angle, 0deg)) translateY(-36px);
+}
+
+.compass-tick-major {
+  @apply w-0.5 h-2 bg-slate-300;
+}
+
+.compass-tick-minor {
+  @apply w-px h-1 bg-slate-500;
+}
+
+.compass-cardinal {
+  @apply absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(var(--cardinal-angle, 0deg)) translateY(-28px) rotate(var(--counter-rotate, 0deg));
+  transition: transform 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.compass-cardinal-text {
+  @apply block text-[11px] font-bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.compass-center-pointer {
+  @apply absolute inset-0 flex items-center justify-center pointer-events-none;
+}
+
+.compass-pointer-triangle {
+  @apply w-0 h-0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #ef4444;
+  transform: translateY(-4px);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.compass-pointer-dot {
+  @apply absolute w-2 h-2 rounded-full bg-slate-800 border border-slate-600;
 }
 
 /* Virtual joystick styles */
