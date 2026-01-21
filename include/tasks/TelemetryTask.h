@@ -23,8 +23,11 @@ private:
     // JSON document for telemetry data (ArduinoJson v7)
     JsonDocument telemetryDoc;
     
+    // Pre-allocated output buffer (avoids String heap allocation)
+    char telemetryBuffer[1024];
+    
     // Callback function for sending telemetry data
-    std::function<void(const String&)> telemetryTransmitter;
+    std::function<void(const char*, size_t)> telemetryTransmitter;
     
     // Private methods
     void processTelemetry();
@@ -62,7 +65,7 @@ public:
     void setTransmissionEnabled(bool enabled);
     
     // Set telemetry transmission callback
-    void setTelemetryTransmitter(std::function<void(const String&)> transmitter);
+    void setTelemetryTransmitter(std::function<void(const char*, size_t)> transmitter);
     
     // Check if telemetry transmitter is available
     bool hasTelemetryTransmitter() const { return telemetryTransmitter != nullptr; }

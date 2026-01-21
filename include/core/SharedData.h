@@ -200,14 +200,14 @@ private:
     // Manual control state
     bool manualModeActive;
     bool manualMoving;
-    String manualDirection;
+    char manualDirection[12];  // "forward", "backward", "left", "right", "stop"
     int manualSpeed;
     
     // Enhanced mission data
     PathSegment pathSegments[MAX_WAYPOINTS - 1];  // N-1 segments for N waypoints
     int segmentCount;
     MissionParameters missionParams;
-    String missionId;
+    char missionId[36];  // Fixed-size mission ID (UUID format)
 
 public:
     // Constructor
@@ -247,16 +247,16 @@ public:
     MissionParameters getMissionParameters();
     
     // Manual control methods
-    bool getManualControlState(bool& active, bool& moving, String& direction, int& speed);
-    bool setManualControlState(bool active, bool moving, const String& direction, int speed);
+    bool getManualControlState(bool& active, bool& moving, char* direction, size_t dirLen, int& speed);
+    bool setManualControlState(bool active, bool moving, const char* direction, int speed);
     bool isManualModeActive();
     
     void setPathSegments(const PathSegment* segments, int count);
     int getPathSegmentCount();
     PathSegment getPathSegment(int index);
     
-    void setMissionId(const String& id);
-    String getMissionId();
+    void setMissionId(const char* id);
+    const char* getMissionId();
     
     void setMissionState(MissionState state);
     MissionState getMissionState();

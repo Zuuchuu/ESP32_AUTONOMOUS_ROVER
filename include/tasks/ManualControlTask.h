@@ -19,7 +19,7 @@ private:
     // Manual control state
     bool isManualModeActive;
     bool isMoving;
-    String currentDirection;
+    char currentDirection[12];  // "forward", "backward", "left", "right", "stop"
     int currentSpeed;
     
     // Timing and safety
@@ -28,10 +28,10 @@ private:
     unsigned long updateInterval;
     
     // Private methods
-    void processManualCommand(const String& direction, int speed);
+    void processManualCommand(const char* direction, int speed);
     void stopMovement();
     void updateMotors();
-    bool isCommandValid(const String& direction, int speed);
+    bool isCommandValid(const char* direction, int speed);
     void emergencyStop();
     
 public:
@@ -50,13 +50,13 @@ public:
     // Control methods
     bool enableManualMode();
     bool disableManualMode();
-    bool executeCommand(const String& direction, int speed);
+    bool executeCommand(const char* direction, int speed);
     bool stopAllMovement();
     
     // Status methods
     bool isActive() const { return isManualModeActive; }
     bool isCurrentlyMoving() const { return isMoving; }
-    String getCurrentDirection() const { return currentDirection; }
+    const char* getCurrentDirection() const { return currentDirection; }
     int getCurrentSpeed() const { return currentSpeed; }
     
     // Configuration methods

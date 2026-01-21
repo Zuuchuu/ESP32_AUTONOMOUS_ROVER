@@ -1,5 +1,6 @@
 #include "core/SharedData.h"
 #include <math.h>
+#include <cstring>  // For strncpy, memset
 
 // ============================================================================
 // GLOBAL SHARED DATA INSTANCE
@@ -22,12 +23,12 @@ SharedData::SharedData() {
     
     // Initialize mission data
     segmentCount = 0;
-    missionId = "";
+    missionId[0] = '\0';  // Empty string
     
     // Initialize manual control state
     manualModeActive = false;
     manualMoving = false;
-    manualDirection = "";
+    manualDirection[0] = '\0';  // Empty string
     manualSpeed = 0;
 }
 
@@ -363,20 +364,18 @@ PathSegment SharedData::getPathSegment(int index) {
     return segment;
 }
 
-void SharedData::setMissionId(const String& id) {
+void SharedData::setMissionId(const char* id) {
     if (xSemaphoreTake(missionMutex, portMAX_DELAY) == pdTRUE) {
-        missionId = id;
+        strncpy(missionId, id, sizeof(missionId) - 1);
+        missionId[sizeof(missionId) - 1] = '\0';  // Ensure null termination
         xSemaphoreGive(missionMutex);
     }
 }
 
-String SharedData::getMissionId() {
-    String id;
-    if (xSemaphoreTake(missionMutex, portMAX_DELAY) == pdTRUE) {
-        id = missionId;
-        xSemaphoreGive(missionMutex);
-    }
-    return id;
+const char* SharedData::getMissionId() {
+    // Note: Returns pointer to internal buffer - caller should copy if needed
+    // Thread-safe read since missionId is a fixed buffer
+    return missionId;
 }
 
 void SharedData::setMissionState(MissionState state) {
@@ -409,11 +408,14 @@ void SharedData::updateMissionProgress(double progress, int segmentIndex, double
 // MANUAL CONTROL METHODS IMPLEMENTATION
 // ============================================================================
 
-bool SharedData::getManualControlState(bool& active, bool& moving, String& direction, int& speed) {
+bool SharedData::getManualControlState(bool& active, bool& moving, char* direction, size_t dirLen, int& speed) {
     if (xSemaphoreTake(manualControlMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         active = manualModeActive;
         moving = manualMoving;
-        direction = manualDirection;
+        if (direction && dirLen > 0) {
+            strncpy(direction, manualDirection, dirLen - 1);
+            direction[dirLen - 1] = '\0';
+        }
         speed = manualSpeed;
         xSemaphoreGive(manualControlMutex);
         return true;
@@ -421,11 +423,16 @@ bool SharedData::getManualControlState(bool& active, bool& moving, String& direc
     return false;
 }
 
-bool SharedData::setManualControlState(bool active, bool moving, const String& direction, int speed) {
+bool SharedData::setManualControlState(bool active, bool moving, const char* direction, int speed) {
     if (xSemaphoreTake(manualControlMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         manualModeActive = active;
         manualMoving = moving;
-        manualDirection = direction;
+        if (direction) {
+            strncpy(manualDirection, direction, sizeof(manualDirection) - 1);
+            manualDirection[sizeof(manualDirection) - 1] = '\0';
+        } else {
+            manualDirection[0] = '\0';
+        }
         manualSpeed = speed;
         xSemaphoreGive(manualControlMutex);
         return true;

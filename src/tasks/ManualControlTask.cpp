@@ -1,5 +1,6 @@
 #include "tasks/ManualControlTask.h"
 #include <Arduino.h>
+#include <cstring>  // For strcmp, strncpy
 #include "config/config.h"
 
 // ============================================================================
@@ -7,8 +8,9 @@
 // ============================================================================
 
 ManualControlTask::ManualControlTask() 
-    : isManualModeActive(false), isMoving(false), currentDirection(""), currentSpeed(0),
+    : isManualModeActive(false), isMoving(false), currentSpeed(0),
       lastCommandTime(0), commandTimeout(10000), updateInterval(100) {
+    currentDirection[0] = '\0';  // Initialize empty string
 }
 
 ManualControlTask::~ManualControlTask() {
@@ -31,7 +33,7 @@ bool ManualControlTask::initialize() {
     // Reset manual control state
     isManualModeActive = false;
     isMoving = false;
-    currentDirection = "";
+    currentDirection[0] = '\0';  // Empty string
     currentSpeed = 0;
     lastCommandTime = 0;
     
@@ -52,7 +54,7 @@ void ManualControlTask::run() {
              bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
              
              if (obstacleDetected) {
-                 if (isMoving && currentDirection == "forward") {
+                 if (isMoving && strcmp(currentDirection, "forward") == 0) {
                      Serial.println("[ManualControl] PROXIMITY ALERT! Stopping.");
                      stopAllMovement();
                  }
@@ -61,14 +63,15 @@ void ManualControlTask::run() {
 
         // Check shared data for manual control commands
         bool manualActive, manualMoving;
-        String manualDirection;
+        char manualDirection[12];
         int manualSpeed;
         
-        if (sharedData.getManualControlState(manualActive, manualMoving, manualDirection, manualSpeed)) {
+        if (sharedData.getManualControlState(manualActive, manualMoving, manualDirection, sizeof(manualDirection), manualSpeed)) {
             // Update local state
             isManualModeActive = manualActive;
             isMoving = manualMoving;
-            currentDirection = manualDirection;
+            strncpy(currentDirection, manualDirection, sizeof(currentDirection) - 1);
+            currentDirection[sizeof(currentDirection) - 1] = '\0';
             currentSpeed = manualSpeed;
             
             // Execute manual commands
@@ -107,7 +110,7 @@ bool ManualControlTask::enableManualMode() {
     Serial.println("[ManualControl] Enabling manual control mode");
     isManualModeActive = true;
     isMoving = false;
-    currentDirection = "";
+    currentDirection[0] = '\0';  // Empty string
     currentSpeed = 0;
     
     // Stop any current movement
@@ -133,7 +136,7 @@ bool ManualControlTask::disableManualMode() {
     return true;
 }
 
-bool ManualControlTask::executeCommand(const String& direction, int speed) {
+bool ManualControlTask::executeCommand(const char* direction, int speed) {
     if (!isManualModeActive) {
         Serial.println("[ManualControl] Error: Manual mode not active");
         return false;
@@ -141,12 +144,12 @@ bool ManualControlTask::executeCommand(const String& direction, int speed) {
     
     if (!isCommandValid(direction, speed)) {
         Serial.printf("[ManualControl] Error: Invalid command - direction: %s, speed: %d\n", 
-                     direction.c_str(), speed);
+                     direction, speed);
         return false;
     }
     
     Serial.printf("[ManualControl] Executing command: %s at speed %d\n", 
-                 direction.c_str(), speed);
+                 direction, speed);
     
     // Process the command
     processManualCommand(direction, speed);
@@ -164,8 +167,9 @@ bool ManualControlTask::stopAllMovement() {
 // PRIVATE METHODS
 // ============================================================================
 
-void ManualControlTask::processManualCommand(const String& direction, int speed) {
-    currentDirection = direction;
+void ManualControlTask::processManualCommand(const char* direction, int speed) {
+    strncpy(currentDirection, direction, sizeof(currentDirection) - 1);
+    currentDirection[sizeof(currentDirection) - 1] = '\0';
     currentSpeed = speed;
     isMoving = true;
     
@@ -176,19 +180,19 @@ void ManualControlTask::processManualCommand(const String& direction, int speed)
     int leftSpeed = 0;
     int rightSpeed = 0;
     
-    if (direction == "forward") {
+    if (strcmp(direction, "forward") == 0) {
         leftSpeed = speed;
         rightSpeed = speed;
-    } else if (direction == "backward") {
+    } else if (strcmp(direction, "backward") == 0) {
         leftSpeed = -speed;
         rightSpeed = -speed;
-    } else if (direction == "left") {
+    } else if (strcmp(direction, "left") == 0) {
         leftSpeed = -speed;
         rightSpeed = speed;
-    } else if (direction == "right") {
+    } else if (strcmp(direction, "right") == 0) {
         leftSpeed = speed;
         rightSpeed = -speed;
-    } else if (direction == "stop") {
+    } else if (strcmp(direction, "stop") == 0) {
         leftSpeed = 0;
         rightSpeed = 0;
         isMoving = false;
@@ -206,7 +210,7 @@ void ManualControlTask::stopMovement() {
     Serial.println("[ManualControl] Stopping movement");
     motorController.stopMotors();
     isMoving = false;
-    currentDirection = "";
+    currentDirection[0] = '\0';
     currentSpeed = 0;
 }
 
@@ -216,10 +220,11 @@ void ManualControlTask::updateMotors() {
     // Could be extended for additional safety checks or motor monitoring
 }
 
-bool ManualControlTask::isCommandValid(const String& direction, int speed) {
+bool ManualControlTask::isCommandValid(const char* direction, int speed) {
     // Validate direction
-    if (direction != "forward" && direction != "backward" && 
-        direction != "left" && direction != "right" && direction != "stop") {
+    if (strcmp(direction, "forward") != 0 && strcmp(direction, "backward") != 0 && 
+        strcmp(direction, "left") != 0 && strcmp(direction, "right") != 0 && 
+        strcmp(direction, "stop") != 0) {
         return false;
     }
     
@@ -235,7 +240,7 @@ void ManualControlTask::emergencyStop() {
     Serial.println("[ManualControl] EMERGENCY STOP ACTIVATED");
     motorController.emergencyStop();
     isMoving = false;
-    currentDirection = "";
+    currentDirection[0] = '\0';
     currentSpeed = 0;
 }
 

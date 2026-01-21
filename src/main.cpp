@@ -232,9 +232,9 @@ void createTasks() {
     );
     
     // Set up telemetry transmission callback BEFORE creating the task
-    telemetryTask.setTelemetryTransmitter([](const String& data) {
+    telemetryTask.setTelemetryTransmitter([](const char* data, size_t len) {
         if (wifiTask.isClientConnected()) {
-            wifiTask.sendRaw(data);
+            wifiTask.sendRaw(data, len);
         }
     });
     

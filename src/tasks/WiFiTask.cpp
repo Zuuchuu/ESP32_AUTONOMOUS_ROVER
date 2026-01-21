@@ -54,6 +54,10 @@ void WiFiTask::run() {
         // Accept new client
         client = newClient;
         clientConnected = true;
+        
+        // Enable TCP_NODELAY for low-latency transmission (disable Nagle's algorithm)
+        client.setNoDelay(true);
+        
         Serial.printf("New client connected: %s\n", getClientIP().c_str());
         
         // Send welcome message
@@ -199,7 +203,7 @@ void WiFiTask::processUploadMission() {
     }
 
     // 1) Store mission id
-    sharedData.setMissionId(String((const char*)jsonDoc["mission_id"]));
+    sharedData.setMissionId(jsonDoc["mission_id"].as<const char*>());
 
     // 2) Waypoints
     if (jsonDoc["waypoints"].is<JsonArray>()) {
@@ -258,8 +262,8 @@ void WiFiTask::processStartMission() {
     }
 
     // 1) Store mission id
-    sharedData.setMissionId(String((const char*)jsonDoc["mission_id"]))
-;
+    sharedData.setMissionId(jsonDoc["mission_id"].as<const char*>());
+
     // 2) Waypoints
     if (jsonDoc["waypoints"].is<JsonArray>()) {
         JsonArray waypoints = jsonDoc["waypoints"].as<JsonArray>();
@@ -479,7 +483,7 @@ void WiFiTask::processManualMove() {
     Serial.printf("[WiFi] Manual move command: %s at speed %d\n", direction.c_str(), speed);
     
     // Update shared data with manual control state
-    if (sharedData.setManualControlState(true, (direction != "stop"), direction, speed)) {
+    if (sharedData.setManualControlState(true, (direction != "stop"), direction.c_str(), speed)) {
         String response = "{\"status\":\"success\",\"message\":\"Manual move command executed: " + direction + " at speed " + String(speed) + "%\"}";
         sendResponse(response);
         Serial.println("[WiFi] Manual move command processed successfully");
@@ -523,6 +527,6 @@ void wifiTaskFunction(void* parameter) {
     
     while (true) {
         wifiTask.run();
-        vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz update rate
+        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz - balanced between responsiveness and CPU usage
     }
 }

@@ -248,26 +248,23 @@ void TelemetryTask::buildTelemetryData() {
 // ============================================================================
 
 void TelemetryTask::sendTelemetryData() {
-    // Serialize JSON to string
-    String telemetryString;
-    serializeJson(telemetryDoc, telemetryString);
+    // Serialize JSON directly to pre-allocated buffer (zero heap allocation)
+    size_t len = serializeJson(telemetryDoc, telemetryBuffer, sizeof(telemetryBuffer) - 2);
     
     // Add newline for TCP transmission
-    telemetryString += "\n";
+    telemetryBuffer[len] = '\n';
+    telemetryBuffer[len + 1] = '\0';
+    len++;
     
     // Send to connected clients via telemetry transmitter callback
     if (telemetryTransmitter) {
-        telemetryTransmitter(telemetryString);
-        Serial.printf("[Telemetry] Sent %d bytes to client via callback\n", telemetryString.length());
-    } else {
-        Serial.println("[Telemetry] ERROR: No telemetry transmitter available, data not sent");
+        telemetryTransmitter(telemetryBuffer, len);
     }
     
-    // Also print to serial for debugging (but less frequently to avoid spam)
+    // Reduced debug logging (only every 30 seconds)
     static unsigned long lastSerialPrint = 0;
-    if (millis() - lastSerialPrint > 10000) {  // Print every 10 seconds
-        Serial.println("[Telemetry] Current telemetry data sample:");
-        Serial.println(telemetryString.substring(0, 200) + "..."); // Show first 200 chars
+    if (millis() - lastSerialPrint > 30000) {
+        Serial.printf("[Telemetry] Sent %d bytes\n", len);
         lastSerialPrint = millis();
     }
 }
@@ -377,7 +374,7 @@ void TelemetryTask::setTransmissionEnabled(bool enabled) {
     }
 }
 
-void TelemetryTask::setTelemetryTransmitter(std::function<void(const String&)> transmitter) {
+void TelemetryTask::setTelemetryTransmitter(std::function<void(const char*, size_t)> transmitter) {
     telemetryTransmitter = transmitter;
     Serial.println("[Telemetry] Telemetry transmitter callback set");
 }

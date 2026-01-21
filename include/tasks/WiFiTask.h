@@ -55,8 +55,13 @@ public:
     bool isClientConnected() const { return clientConnected; }
     String getClientIP() const;
 
-    // Allow other tasks (e.g., TelemetryTask) to stream data to client
-    void sendRaw(const String& data) { if (clientConnected && client.connected()) client.println(data); }
+    // Allow other tasks (e.g., TelemetryTask) to stream raw bytes to client
+    // Note: TCP_NODELAY is set on client connect for low latency
+    void sendRaw(const char* data, size_t len) { 
+        if (clientConnected && client.connected()) {
+            client.write((const uint8_t*)data, len);
+        }
+    }
 };
 
 // ============================================================================

@@ -8,24 +8,27 @@
 // ============================================================================
 
 // Task Priorities (Higher number = higher priority)
-#define TASK_PRIORITY_WIFI        1
-#define TASK_PRIORITY_GPS         2
-#define TASK_PRIORITY_IMU         2
-#define TASK_PRIORITY_NAVIGATION  3
-#define TASK_PRIORITY_TELEMETRY   1
-#define TASK_PRIORITY_DISPLAY     1
-#define TASK_PRIORITY_TOF         2
-#define TASK_PRIORITY_ENCODER     2
+// Critical path: Sensors -> Navigation -> Control
+#define TASK_PRIORITY_ENCODER     4  // Highest - timing critical encoder ISR data
+#define TASK_PRIORITY_IMU         4  // High - 100Hz sensor fusion
+#define TASK_PRIORITY_NAVIGATION  3  // Real-time motor control
+#define TASK_PRIORITY_GPS         2  // Medium - 1Hz updates
+#define TASK_PRIORITY_TOF         2  // Medium - obstacle detection
+#define TASK_PRIORITY_WIFI        2  // Medium - command handling
+#define TASK_PRIORITY_TELEMETRY   1  // Low - can be delayed
+#define TASK_PRIORITY_DISPLAY     1  // Lowest - cosmetic only
 
 // Task Stack Sizes (in bytes)
-#define TASK_STACK_SIZE_WIFI      4096
-#define TASK_STACK_SIZE_GPS       4096
-#define TASK_STACK_SIZE_IMU       4096
-#define TASK_STACK_SIZE_NAVIGATION 4096
-#define TASK_STACK_SIZE_TELEMETRY 4096
-#define TASK_STACK_SIZE_DISPLAY   4096
-#define TASK_STACK_SIZE_TOF       4096
-#define TASK_STACK_SIZE_ENCODER   4096
+// Optimized based on function requirements + 512-byte safety margin
+// Monitor with uxTaskGetStackHighWaterMark() to verify
+#define TASK_STACK_SIZE_WIFI      3072  // JSON parsing, TCP buffer
+#define TASK_STACK_SIZE_GPS       2048  // Serial parsing only
+#define TASK_STACK_SIZE_IMU       3072  // I2C + NVS + sensor fusion
+#define TASK_STACK_SIZE_NAVIGATION 3072  // PID + trig calculations
+#define TASK_STACK_SIZE_TELEMETRY 3584  // JSON serialization (largest payload)
+#define TASK_STACK_SIZE_DISPLAY   2048  // Simple I2C writes
+#define TASK_STACK_SIZE_TOF       3072  // VL53L0X I2C + ranging operations
+#define TASK_STACK_SIZE_ENCODER   1536  // ISR-based, minimal logic
 
 // Task Core Assignment (0 or 1)
 #define TASK_CORE_WIFI           0

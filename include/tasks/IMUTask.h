@@ -27,7 +27,7 @@ private:
     
     // Configuration
     static constexpr float MAGNETIC_DECLINATION = -0.67f;  // Degrees for Ho Chi Minh City (-0° 40')
-    static constexpr float HEADING_OFFSET = -75.0f;         // 75 degree East offset adjustment
+    static constexpr float HEADING_OFFSET = -40.0f;         // 40 degree East offset adjustment
     static const uint32_t CALIBRATION_SAVE_INTERVAL = 30000; // Save every 30 seconds when calibrated
     static const char* CALIBRATION_NAMESPACE;
     

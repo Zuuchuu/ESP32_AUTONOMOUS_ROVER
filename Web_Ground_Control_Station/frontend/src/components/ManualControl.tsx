@@ -21,18 +21,33 @@ export function ManualControl({ onMove, onEnable, onDisable }: ManualControlProp
     // Handle enabling/disabling
     const toggleEnabled = useCallback(() => {
         if (isEnabled) {
+            // Clear any active intervals when disabling
+            if (sendInterval.current) {
+                clearInterval(sendInterval.current);
+                sendInterval.current = null;
+            }
             onDisable();
             setIsEnabled(false);
             setActiveDirection(null);
+            // Send explicit stop command
+            onMove('stop', 0);
         } else {
             onEnable();
             setIsEnabled(true);
         }
-    }, [isEnabled, onEnable, onDisable]);
+    }, [isEnabled, onEnable, onDisable, onMove]);
 
     // Send movement command
     const startMove = useCallback((direction: string) => {
+        // Guard: Don't execute if disabled
         if (!isEnabled) return;
+
+        // Clear any existing interval first
+        if (sendInterval.current) {
+            clearInterval(sendInterval.current);
+            sendInterval.current = null;
+        }
+
         setActiveDirection(direction);
         onMove(direction, speed);
 
@@ -93,6 +108,15 @@ export function ManualControl({ onMove, onEnable, onDisable }: ManualControlProp
             window.removeEventListener('keyup', handleKeyUp);
         };
     }, [isEnabled, activeDirection, startMove, stopMove]);
+
+    // Cleanup intervals when disabled
+    useEffect(() => {
+        if (!isEnabled && sendInterval.current) {
+            clearInterval(sendInterval.current);
+            sendInterval.current = null;
+            setActiveDirection(null);
+        }
+    }, [isEnabled]);
 
     // Cleanup on unmount
     useEffect(() => {
