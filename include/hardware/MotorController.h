@@ -30,10 +30,12 @@ private:
     float kp, ki, kd;
     
     struct PIDState {
-        float targetSpeed; // Ticks per loop or RPM
-        float currentSpeed;
-        float errorSum;
-        float lastError;
+        float targetSpeed;          // Target ticks per interval (0-255 mapped)
+        float currentSpeed;         // Measured ticks per interval
+        float errorSum;             // Integral accumulator
+        float lastError;            // Previous error for derivative
+        float maxCountsPerInterval; // Motor-specific max counts (based on CPR)
+        int currentPWM;             // Current PWM output for smooth ramping
         unsigned long lastTime;
     } pidLeft, pidRight;
 

@@ -1,21 +1,6 @@
 #include "hardware/MotorController.h"
 #include "config/config.h"
 
-// Define default PID constants if not in config
-#ifndef DEFAULT_KP
-#define DEFAULT_KP 1.5f
-#endif
-#ifndef DEFAULT_KI
-#define DEFAULT_KI 0.05f
-#endif
-#ifndef DEFAULT_KD
-#define DEFAULT_KD 0.1f
-#endif
-
-#ifndef MAX_COUNTS_PER_UPDATE
-#define MAX_COUNTS_PER_UPDATE MAX_COUNTS_PER_LOOP
-#endif
-
 // Global Instance
 MotorController motorController;
 
@@ -27,11 +12,17 @@ MotorController::MotorController()
     : leftMotorSpeed(0), rightMotorSpeed(0), isInitialized(false),
       leftPWMChannel(PWM_CHANNEL_LEFT), rightPWMChannel(PWM_CHANNEL_RIGHT),
       leftEncoder(nullptr), rightEncoder(nullptr), pidEnabled(false),
-      kp(DEFAULT_KP), ki(DEFAULT_KI), kd(DEFAULT_KD) {
+      kp(MOTOR_PID_KP), ki(MOTOR_PID_KI), kd(MOTOR_PID_KD) {
         
-      // Init PID states
-      pidLeft = {0,0,0,0,0};
-      pidRight = {0,0,0,0,0};
+    // Calculate max encoder counts per PID interval
+    // For synchronized 150:1 N20 motors @ 5V DC:
+    // (120 RPM / 60) × 4200 CPR × 0.020s = 168 counts/interval
+    float intervalSec = MOTOR_PID_INTERVAL_MS / 1000.0f;
+    float maxCounts = (MOTOR_MAX_RPM / 60.0f) * LEFT_MOTOR_ENCODER_CPR * intervalSec;
+    
+    // Both motors use same CPR since they're matched 150:1
+    pidLeft = {0, 0, 0, 0, maxCounts, 0, 0};
+    pidRight = {0, 0, 0, 0, maxCounts, 0, 0};
 }
 
 MotorController::~MotorController() {
@@ -49,25 +40,24 @@ bool MotorController::initialize() {
         return true;
     }
 
-    Serial.println("[MotorController] Initializing motor controller...");
+    Serial.println("[MotorController] Initializing for skid-steer drive...");
     
     // Setup motor control pins
     SETUP_MOTOR_PINS();
     
-    // Setup PWM channels for motor speed control
+    // Setup PWM channels for motor speed control (5kHz, 8-bit resolution)
     ledcSetup(leftPWMChannel, PWM_FREQ, PWM_RESOLUTION);
     ledcSetup(rightPWMChannel, PWM_FREQ, PWM_RESOLUTION);
     ledcAttachPin(PIN_LEFT_MOTOR_PWM, leftPWMChannel);
     ledcAttachPin(PIN_RIGHT_MOTOR_PWM, rightPWMChannel);
     
-    // Initialize Encoders
-    // Assuming N20 Micro Metal Gearmotor with Magnetic Encoder
-    // CPR (Counts Per Revolution) of rear shaft = 12 (rising and falling of both edges = 12? usually 7 or 3 PPR * 4 = 12 CPR)
-    // Output shaft CPR = Gear Ratio * Rear Shaft CPR.
-    // e.g. 50:1 -> 600 CPR.
-    // We pass 1.0f as placeholder for now or specific if known.
-    leftEncoder = new MotorEncoder(PIN_LEFT_ENCODER_A, PIN_LEFT_ENCODER_B, 600.0, false);
-    rightEncoder = new MotorEncoder(PIN_RIGHT_ENCODER_A, PIN_RIGHT_ENCODER_B, 600.0, true); // Reverse right side usually?
+    // Initialize Encoders for synchronized 150:1 N20 motors
+    // CPR = 7 PPR × 4 (quadrature) × 150 = 4200 counts/rev
+    // Left encoder reversed due to physical mounting
+    leftEncoder = new MotorEncoder(PIN_LEFT_ENCODER_A, PIN_LEFT_ENCODER_B, 
+                                    LEFT_MOTOR_ENCODER_CPR, true);
+    rightEncoder = new MotorEncoder(PIN_RIGHT_ENCODER_A, PIN_RIGHT_ENCODER_B, 
+                                     RIGHT_MOTOR_ENCODER_CPR, false);
     
     leftEncoder->begin();
     rightEncoder->begin();
@@ -76,31 +66,34 @@ bool MotorController::initialize() {
     stopMotors();
     
     isInitialized = true;
-    enablePID(true); // Enable by default as requested
+    enablePID(true);
     
-    Serial.println("[MotorController] Motor controller & Encoders initialized successfully");
+    Serial.printf("[MotorController] Initialized - CPR: %.0f, Max counts/interval: %.1f\n",
+                  LEFT_MOTOR_ENCODER_CPR, pidLeft.maxCountsPerInterval);
     return true;
 }
 
 // ============================================================================
-// MOTOR CONTROL METHODS
+// MOTOR CONTROL METHODS - SKID STEER
 // ============================================================================
 
 void MotorController::setMotorSpeeds(int leftSpeed, int rightSpeed) {
     if (!isInitialized) return;
 
-    // Use these as target speeds
-    // If PID enabled, map 0-255 to Target Ticks/Time
+    // Clamp input to valid range (-255 to 255)
+    leftSpeed = constrain(leftSpeed, -255, 255);
+    rightSpeed = constrain(rightSpeed, -255, 255);
     
     if (pidEnabled) {
-        // Map 255 to MAX_COUNTS_PER_UPDATE
-        pidLeft.targetSpeed = (float)leftSpeed * MAX_COUNTS_PER_UPDATE / 255.0f;
-        pidRight.targetSpeed = (float)rightSpeed * MAX_COUNTS_PER_UPDATE / 255.0f;
+        // Map PWM command to target encoder counts per interval
+        // This ensures both sides target the same wheel speed
+        float leftTarget = (float)leftSpeed * pidLeft.maxCountsPerInterval / 255.0f;
+        float rightTarget = (float)rightSpeed * pidRight.maxCountsPerInterval / 255.0f;
         
-        // Instant update of direction for responsiveness, but let PID handle magnitude
-        // Actually, if using PID, we should let PID calculate PWM.
-        // But we need to know direction.
+        pidLeft.targetSpeed = leftTarget;
+        pidRight.targetSpeed = rightTarget;
     } else {
+        // Open-loop control (no encoder feedback)
         setLeftMotorSpeed(leftSpeed);
         setRightMotorSpeed(rightSpeed);
     }
@@ -108,13 +101,15 @@ void MotorController::setMotorSpeeds(int leftSpeed, int rightSpeed) {
 
 void MotorController::setLeftMotorSpeed(int speed) {
     if (!isInitialized) return;
+    
+    speed = constrain(speed, -255, 255);
+    
     if (pidEnabled) {
-         pidLeft.targetSpeed = (float)speed * MAX_COUNTS_PER_UPDATE / 255.0f;
-         return;
+        pidLeft.targetSpeed = (float)speed * pidLeft.maxCountsPerInterval / 255.0f;
+        return;
     }
     
-    if (speed > 255) speed = 255;
-    if (speed < -255) speed = -255;
+    // Open-loop control
     leftMotorSpeed = abs(speed);
     
     if (speed > 0) {
@@ -132,13 +127,15 @@ void MotorController::setLeftMotorSpeed(int speed) {
 
 void MotorController::setRightMotorSpeed(int speed) {
     if (!isInitialized) return;
+    
+    speed = constrain(speed, -255, 255);
+    
     if (pidEnabled) {
-         pidRight.targetSpeed = (float)speed * MAX_COUNTS_PER_UPDATE / 255.0f;
-         return;
+        pidRight.targetSpeed = (float)speed * pidRight.maxCountsPerInterval / 255.0f;
+        return;
     }
 
-    if (speed > 255) speed = 255;
-    if (speed < -255) speed = -255;
+    // Open-loop control
     rightMotorSpeed = abs(speed);
     
     if (speed > 0) {
@@ -157,11 +154,15 @@ void MotorController::setRightMotorSpeed(int speed) {
 void MotorController::stopMotors() {
     if (!isInitialized) return;
     
+    // Reset PID states
     pidLeft.targetSpeed = 0;
     pidRight.targetSpeed = 0;
     pidLeft.errorSum = 0;
     pidRight.errorSum = 0;
+    pidLeft.currentPWM = 0;
+    pidRight.currentPWM = 0;
     
+    // Apply braking (both H-bridge inputs LOW)
     digitalWrite(PIN_LEFT_MOTOR_IN1, LOW);
     digitalWrite(PIN_LEFT_MOTOR_IN2, LOW);
     digitalWrite(PIN_RIGHT_MOTOR_IN1, LOW);
@@ -175,27 +176,39 @@ void MotorController::stopMotors() {
 }
 
 void MotorController::stopLeftMotor() {
-    stopMotors(); // Simplification
+    pidLeft.targetSpeed = 0;
+    pidLeft.errorSum = 0;
+    pidLeft.currentPWM = 0;
+    digitalWrite(PIN_LEFT_MOTOR_IN1, LOW);
+    digitalWrite(PIN_LEFT_MOTOR_IN2, LOW);
+    ledcWrite(leftPWMChannel, 0);
+    leftMotorSpeed = 0;
 }
+
 void MotorController::stopRightMotor() {
-    stopMotors(); // Simplification
+    pidRight.targetSpeed = 0;
+    pidRight.errorSum = 0;
+    pidRight.currentPWM = 0;
+    digitalWrite(PIN_RIGHT_MOTOR_IN1, LOW);
+    digitalWrite(PIN_RIGHT_MOTOR_IN2, LOW);
+    ledcWrite(rightPWMChannel, 0);
+    rightMotorSpeed = 0;
 }
 
 // ============================================================================
-// PID Methods
+// PID CONTROL LOOP - Velocity Control
 // ============================================================================
 
 void MotorController::update() {
     if (!isInitialized || !pidEnabled) return;
     
-    // Run PID calc for both motors
     int leftPWM, rightPWM;
     
+    // Run velocity PID for both motor channels
     updatePID(pidLeft, leftEncoder, leftPWM);
     updatePID(pidRight, rightEncoder, rightPWM);
     
-    // Apply PWM
-    // Direction logic
+    // Apply PWM with direction
     if (leftPWM >= 0) {
         setLeftMotorDirection(true);
         setLeftMotorPWM(leftPWM);
@@ -220,97 +233,101 @@ void MotorController::updatePID(PIDState& state, MotorEncoder* encoder, int& pwm
     unsigned long now = millis();
     unsigned long dt = now - state.lastTime;
     
-    if (dt < 20) return; // Limit update rate (e.g. 50Hz) or assume called at fixed rate
+    // Enforce fixed update interval for consistent timing
+    if (dt < MOTOR_PID_INTERVAL_MS) {
+        pwmOutput = state.currentPWM;
+        return;
+    }
     
-    long currentCount = encoder->getPosition();
-    static long lastLeftCount = 0; // Instance specific? No, need inside PIDState or separate.
-    // Ideally encoder provides Speed, but we can calc here.
-    // For simplicity, let's reset encoder count every loop? No, drift.
-    // Store prev count in PIDState?
-    // Added 'lastCount' to PIDState would be cleaner, but I can't edit Header again easily right now.
-    // I entered struct PIDState ... lastError, errorSum.
-    // I can assume external valid speed or I use a static map here (ugly).
-    // Let's rely on Encoder::getRPM() returning 0 implementation for now?
-    // No, I'll use a hack or just static logic if single instance. 
-    // Actually, I can use the position delta.
-    
-    // To fix this cleanly, I should have added 'long lastCount' to PIDState.
-    // Assuming I can't edit header now -> I will use a static map or just local statics if always called in order.
-    // Actually, let's re-read encoder absolute position.
-    // delta = current - prev.
-    // I will add `lastCount` to PIDState next time. For now, let's assume `getRPM` works or implements it inside `MotorEncoder` properly?
-    // No, I set it to return 0.
-    
-    // RECOVERY: Modifying MotorEncoder to return delta ticks since last call or similar is safer.
-    // OR: Just assume dt is small and use global. 
-    // Let's modify MotorController.h one more time? fast.
-    // No, I will use `currentSpeed` in PIDState as the *measured* speed.
-    // But I need to calculate it.
-    
-    // WORKAROUND: Use `encoder->getPosition()` and keep a static `prevPos` inside the function method?
-    // But there are 2 motors.
-    // I will use `state.errorSum` (float) ...
-    // Ok, I will just use `state.currentSpeed` (which I didn't verify if I added it... yes I did).
-    
-    // Wait, where do I store previous position?
-    // I will assume `lastError` is enough for D term.
-    // But I need `measuredSpeed` for P term error.
-    
-    // I will re-implement `updatePID` to be robust.
-    // Since I cannot store `lastPosition` in `PIDState` (I forgot to add it), 
-    // I will reset the encoder count after every read? 
-    // `encoder->reset()` -> `position = 0`.
-    // This effectively gives me delta.
-    
-    long delta = encoder->getPosition(); 
-    encoder->reset(); // Critical: Reset count to measure delta per interval
-    
-    float measuredSpeed = (float)delta; // Ticks per interval
+    // Get encoder delta (counts since last call) - preserves absolute position
+    long delta = encoder->getPositionDelta();
+    float measuredSpeed = (float)delta;  // counts per interval
     state.currentSpeed = measuredSpeed;
     
+    // ===== PID Calculation =====
     float error = state.targetSpeed - measuredSpeed;
-    state.errorSum += error;
-    // Clamp integral
-    if (state.errorSum > 1000) state.errorSum = 1000;
-    if (state.errorSum < -1000) state.errorSum = -1000;
     
+    // Integral with anti-windup clamping
+    state.errorSum += error;
+    float maxIntegral = 255.0f / ki;
+    state.errorSum = constrain(state.errorSum, -maxIntegral, maxIntegral);
+    
+    // Derivative on error
     float dErr = error - state.lastError;
     
-    float output = kp * error + ki * state.errorSum + kd * dErr;
+    // PID terms
+    float pTerm = kp * error;
+    float iTerm = ki * state.errorSum;
+    float dTerm = kd * dErr;
     
-    // Feedforward? usually Output IS PWM.
-    int pwm = (int)output;
-    if (pwm > 255) pwm = 255;
-    if (pwm < -255) pwm = -255;
+    // Feedforward: Base PWM proportional to target (improves response)
+    float feedforward = 0.0f;
+    if (state.maxCountsPerInterval > 0 && state.targetSpeed != 0) {
+        // Scale to ~80% of max PWM to leave headroom for PID correction
+        feedforward = (state.targetSpeed / state.maxCountsPerInterval) * 200.0f;
+    }
     
-    pwmOutput = pwm;
+    // Total output
+    float output = feedforward + pTerm + iTerm + dTerm;
     
+    // Clamp to valid PWM range
+    int pwm = constrain((int)output, -255, 255);
+    
+    // Dead zone: Apply minimum PWM to overcome static friction
+    if (state.targetSpeed != 0 && abs(pwm) < 30) {
+        pwm = (pwm >= 0) ? 30 : -30;
+    }
+    
+    // Store state for next iteration
     state.lastError = error;
     state.lastTime = now;
+    state.currentPWM = pwm;
+    
+    pwmOutput = pwm;
 }
 
 void MotorController::enablePID(bool enable) {
     pidEnabled = enable;
     if (!enable) {
         stopMotors();
+    } else {
+        // Reset PID states when enabling
+        pidLeft.errorSum = 0;
+        pidLeft.lastError = 0;
+        pidLeft.currentPWM = 0;
+        pidRight.errorSum = 0;
+        pidRight.lastError = 0;
+        pidRight.currentPWM = 0;
+        
+        // Reset encoder delta counters
+        if (leftEncoder) leftEncoder->getPositionDelta();
+        if (rightEncoder) rightEncoder->getPositionDelta();
     }
 }
 
 void MotorController::setPIDTunings(float p, float i, float d) {
-    kp = p; ki = i; kd = d;
+    kp = p;
+    ki = i;
+    kd = d;
+    Serial.printf("[MotorController] PID tunings: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", kp, ki, kd);
 }
+
+// ============================================================================
+// ENCODER ACCESS - For Odometry
+// ============================================================================
 
 long MotorController::getLeftEncoderCount() {
     if (leftEncoder) return leftEncoder->getPosition();
     return 0;
 }
+
 long MotorController::getRightEncoderCount() {
     if (rightEncoder) return rightEncoder->getPosition();
     return 0;
 }
 
 // ============================================================================
-// PRIVATE METHODS
+// PRIVATE METHODS - H-Bridge Control
 // ============================================================================
 
 void MotorController::setLeftMotorDirection(bool forward) {

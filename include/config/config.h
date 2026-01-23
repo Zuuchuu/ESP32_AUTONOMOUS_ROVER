@@ -71,13 +71,24 @@
 
 #define WHEEL_DIAMETER_MM        43.0
 #define TRACK_WIDTH_MM           140.0
-#define MOTOR_MAX_RPM            90.0
-#define MOTOR_ENCODER_CPR        3575.0
+#define MOTOR_MAX_RPM            120.0     // N20 150:1 @ 5V DC (approx)
+#define MOTOR_GEAR_RATIO         150       // 150:1 gear ratio
+#define MOTOR_ENCODER_PPR        7         // Hall encoder pulses per motor shaft rev
 
-// Calculated Constants
-// Max Speed = 90 RPM * (pi * 0.043) / 60 ~= 0.20 m/s
-// Counts per Loop (20ms @ 90RPM): (90/60) * 3575 * 0.02 ~= 107
-#define MAX_COUNTS_PER_LOOP      107    // For Speed PID Feedforward
+// Encoder CPR (Counts Per Revolution of OUTPUT shaft)
+// CPR = PPR × 4 (quadrature edges) × gear ratio = 7 × 4 × 150 = 4200
+#define LEFT_MOTOR_ENCODER_CPR   4200.0f
+#define RIGHT_MOTOR_ENCODER_CPR  4200.0f
+
+// Motor Speed PID (inner loop - controls individual wheel speeds)
+#define MOTOR_PID_KP             2.0f
+#define MOTOR_PID_KI             0.1f
+#define MOTOR_PID_KD             0.05f
+#define MOTOR_PID_INTERVAL_MS    20        // 50Hz update rate
+
+// Max counts per PID interval at max RPM
+// (120 RPM / 60) × 4200 CPR × 0.020s = 168 counts/interval
+#define MAX_COUNTS_PER_LOOP      168
 
 // ============================================================================
 // MOTOR CONFIGURATION

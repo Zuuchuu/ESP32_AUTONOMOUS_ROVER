@@ -86,12 +86,11 @@ void NavigationTask::run() {
         }
 
         // 4. Motor PID Update (Low-Level)
-        // Ensure this runs frequently for smooth control
-        if (isNavigating) {
-             if (now - lastPIDUpdate >= pidInterval) {
-                 motorController.update(); 
-                 lastPIDUpdate = now;
-             }
+        // CRITICAL: Run at fixed 50Hz REGARDLESS of navigation state
+        // This ensures encoder feedback stays consistent and motors respond smoothly
+        if (now - lastPIDUpdate >= pidInterval) {
+            motorController.update(); 
+            lastPIDUpdate = now;
         }
         
         // Yield to other tasks
