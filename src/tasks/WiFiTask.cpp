@@ -1,6 +1,7 @@
 #include "tasks/WiFiTask.h"
 #include "tasks/NavigationTask.h"
 #include "core/SharedData.h"
+#include "hardware/MotorController.h"
 #include "config/config.h"
 #include "config/wifi_config.h"
 
@@ -390,6 +391,7 @@ void WiFiTask::processSpeedCommand(int speed) {
 void WiFiTask::sendResponse(const String& response) {
     if (clientConnected && client.connected()) {
         client.println(response);
+        client.flush();  // Force immediate transmission to prevent race with telemetry
         Serial.printf("Sent: %s\n", response.c_str());
     }
 }
@@ -467,9 +469,11 @@ void WiFiTask::processManualMove() {
     String direction = jsonDoc["direction"].as<const char*>();
     int speed = jsonDoc["speed"].as<int>();
     
-    // Validate direction
+    // Validate direction - support single and combined directions
     if (direction != "forward" && direction != "backward" && 
-        direction != "left" && direction != "right" && direction != "stop") {
+        direction != "left" && direction != "right" && direction != "stop" &&
+        direction != "forward_left" && direction != "forward_right" &&
+        direction != "backward_left" && direction != "backward_right") {
         sendError("Invalid direction: " + direction);
         return;
     }
@@ -481,6 +485,12 @@ void WiFiTask::processManualMove() {
     }
     
     Serial.printf("[WiFi] Manual move command: %s at speed %d\n", direction.c_str(), speed);
+    
+    // IMMEDIATE STOP: Bypass SharedData delay for instant motor stop
+    if (direction == "stop") {
+        motorController.stopMotors();
+        Serial.println("[WiFi] Motors stopped immediately");
+    }
     
     // Update shared data with manual control state
     if (sharedData.setManualControlState(true, (direction != "stop"), direction.c_str(), speed)) {
@@ -527,6 +537,6 @@ void wifiTaskFunction(void* parameter) {
     
     while (true) {
         wifiTask.run();
-        vTaskDelay(pdMS_TO_TICKS(50)); // 20Hz - balanced between responsiveness and CPU usage
+        vTaskDelay(pdMS_TO_TICKS(20)); // 50Hz - balanced: <30ms latency, low CPU overhead
     }
 }

@@ -32,6 +32,7 @@ export declare class RoverConnection extends EventEmitter {
     disconnect(): void;
     /**
      * Send a command to the rover (JSON format for now)
+     * AGGRESSIVE FLUSH: cork → write → immediate uncork
      */
     sendCommand(command: object): boolean;
     /**

@@ -49,6 +49,9 @@ export class RoverConnection extends EventEmitter {
 
         this.socket.connect(this.port, this.host, () => {
             console.log('[RoverConnection] Connected to rover');
+            // CRITICAL: Disable Nagle's algorithm to ensure commands are sent immediately
+            // Without this, small packets (like stop commands) may be buffered
+            this.socket!.setNoDelay(true);
             this._isConnected = true;
             this.emit('connected');
         });
@@ -89,6 +92,7 @@ export class RoverConnection extends EventEmitter {
 
     /**
      * Send a command to the rover (JSON format for now)
+     * AGGRESSIVE FLUSH: cork → write → immediate uncork
      */
     sendCommand(command: object): boolean {
         if (!this.socket || !this._isConnected) {
@@ -98,7 +102,21 @@ export class RoverConnection extends EventEmitter {
 
         try {
             const json = JSON.stringify(command) + '\n';
-            this.socket.write(json);
+
+            // AGGRESSIVE FLUSH STRATEGY:
+            // 1. Cork to batch (prevents partial writes)
+            // 2. Write the data
+            // 3. Immediately uncork with setImmediate to flush on next I/O cycle
+            this.socket.cork();
+            this.socket.write(json, 'utf8');
+
+            // setImmediate runs before any I/O callbacks, forcing immediate flush
+            setImmediate(() => {
+                if (this.socket && this._isConnected) {
+                    this.socket.uncork();
+                }
+            });
+
             console.log('[RoverConnection] Sent:', json.trim());
             return true;
         } catch (err) {

@@ -200,7 +200,7 @@ private:
     // Manual control state
     bool manualModeActive;
     bool manualMoving;
-    char manualDirection[12];  // "forward", "backward", "left", "right", "stop"
+    char manualDirection[20];  // "forward", "backward", "left", "right", "stop", "forward_right", etc.
     int manualSpeed;
     
     // Enhanced mission data

@@ -12,7 +12,7 @@ MotorController::MotorController()
     : leftMotorSpeed(0), rightMotorSpeed(0), isInitialized(false),
       leftPWMChannel(PWM_CHANNEL_LEFT), rightPWMChannel(PWM_CHANNEL_RIGHT),
       leftEncoder(nullptr), rightEncoder(nullptr), pidEnabled(false),
-      kp(MOTOR_PID_KP), ki(MOTOR_PID_KI), kd(MOTOR_PID_KD) {
+      kp(MOTOR_PID_KP), ki(MOTOR_PID_KI), kd(MOTOR_PID_KD), motorsStopped(false) {
         
     // Calculate max encoder counts per PID interval
     // For synchronized 150:1 N20 motors @ 5V DC:
@@ -66,6 +66,7 @@ bool MotorController::initialize() {
     stopMotors();
     
     isInitialized = true;
+    motorsStopped = false;  // Clear stop lock on initialize
     enablePID(true);
     
     Serial.printf("[MotorController] Initialized - CPR: %.0f, Max counts/interval: %.1f\n",
@@ -84,7 +85,16 @@ void MotorController::setMotorSpeeds(int leftSpeed, int rightSpeed) {
     leftSpeed = constrain(leftSpeed, -255, 255);
     rightSpeed = constrain(rightSpeed, -255, 255);
     
+    // Clear stop lock for intentional movement (non-zero speeds)
+    if (leftSpeed != 0 || rightSpeed != 0) {
+        motorsStopped = false;
+    }
+    
     if (pidEnabled) {
+        // TEMPORARY FIX: Invert left motor due to backward wiring
+        // Hardware fix needed: Swap AO1 ↔ AO2 on TB6612FNG
+        leftSpeed = -leftSpeed;
+        
         // Map PWM command to target encoder counts per interval
         // This ensures both sides target the same wheel speed
         float leftTarget = (float)leftSpeed * pidLeft.maxCountsPerInterval / 255.0f;
@@ -103,26 +113,24 @@ void MotorController::setLeftMotorSpeed(int speed) {
     if (!isInitialized) return;
     
     speed = constrain(speed, -255, 255);
-    
-    if (pidEnabled) {
-        pidLeft.targetSpeed = (float)speed * pidLeft.maxCountsPerInterval / 255.0f;
-        return;
-    }
-    
-    // Open-loop control
-    leftMotorSpeed = abs(speed);
+    // TEMPORARY FIX: Invert left motor due to backward wiring
+    // Hardware fix needed: Swap AO1 ↔ AO2 on TB6612FNG
+    speed = -speed;
     
     if (speed > 0) {
+        // Forward
         setLeftMotorDirection(true);
-        setLeftMotorPWM(leftMotorSpeed);
+        setLeftMotorPWM(speed);
     } else if (speed < 0) {
+        // Backward
         setLeftMotorDirection(false);
-        setLeftMotorPWM(leftMotorSpeed);
+        setLeftMotorPWM(-speed);
     } else {
-        digitalWrite(PIN_LEFT_MOTOR_IN1, LOW);
-        digitalWrite(PIN_LEFT_MOTOR_IN2, LOW);
-        ledcWrite(leftPWMChannel, 0);
+        // Stop
+        setLeftMotorPWM(0);
     }
+    
+    leftMotorSpeed = speed;
 }
 
 void MotorController::setRightMotorSpeed(int speed) {
@@ -154,6 +162,9 @@ void MotorController::setRightMotorSpeed(int speed) {
 void MotorController::stopMotors() {
     if (!isInitialized) return;
     
+    // Set stop lock to prevent PID from restarting motors
+    motorsStopped = true;
+    
     // Reset PID states
     pidLeft.targetSpeed = 0;
     pidRight.targetSpeed = 0;
@@ -161,6 +172,10 @@ void MotorController::stopMotors() {
     pidRight.errorSum = 0;
     pidLeft.currentPWM = 0;
     pidRight.currentPWM = 0;
+    
+    // CRITICAL: Also set motor speeds to 0 directly in open-loop mode
+    leftMotorSpeed = 0;
+    rightMotorSpeed = 0;
     
     // Apply braking (both H-bridge inputs LOW)
     digitalWrite(PIN_LEFT_MOTOR_IN1, LOW);
@@ -202,6 +217,10 @@ void MotorController::stopRightMotor() {
 void MotorController::update() {
     if (!isInitialized || !pidEnabled) return;
     
+    // Skip PID update if motors were explicitly stopped
+    // This prevents PID from restarting motors before new movement command
+    if (motorsStopped) return;
+    
     int leftPWM, rightPWM;
     
     // Run velocity PID for both motor channels
@@ -231,7 +250,15 @@ void MotorController::update() {
 
 void MotorController::updatePID(PIDState& state, MotorEncoder* encoder, int& pwmOutput) {
     unsigned long now = millis();
-    unsigned long dt = now - state.lastTime;
+    
+    // CRITICAL FIX #7: millis() rollover protection (every 49.7 days)
+    unsigned long dt;
+    if (now >= state.lastTime) {
+        dt = now - state.lastTime;
+    } else {
+        // Rollover occurred
+        dt = (0xFFFFFFFF - state.lastTime) + now + 1;
+    }
     
     // Enforce fixed update interval for consistent timing
     if (dt < MOTOR_PID_INTERVAL_MS) {
@@ -242,23 +269,53 @@ void MotorController::updatePID(PIDState& state, MotorEncoder* encoder, int& pwm
     // Get encoder delta (counts since last call) - preserves absolute position
     long delta = encoder->getPositionDelta();
     float measuredSpeed = (float)delta;  // counts per interval
+    float prevMeasuredSpeed = state.currentSpeed;
     state.currentSpeed = measuredSpeed;
+    
+    // ===== ENCODER FAULT DETECTION =====
+    // Detect stalled/disconnected encoder: PWM applied but no movement
+    static unsigned long leftStallStart = 0;
+    static unsigned long rightStallStart = 0;
+    static bool leftStallWarned = false;
+    static bool rightStallWarned = false;
+    
+    unsigned long* stallTimer = (encoder == leftEncoder) ? &leftStallStart : &rightStallStart;
+    bool* stallWarned = (encoder == leftEncoder) ? &leftStallWarned : &rightStallWarned;
+    const char* motorName = (encoder == leftEncoder) ? "LEFT" : "RIGHT";
+    
+    if (abs(state.currentPWM) > 50 && abs(measuredSpeed) < 2) {
+        // Motor has significant PWM but encoder shows minimal movement
+        if (*stallTimer == 0) {
+            *stallTimer = now;  // Start stall timer
+        } else if ((now - *stallTimer) > 500 && !*stallWarned) {
+            // Stationary for 500ms with PWM > 50 → likely encoder fault
+            Serial.printf("[MotorController] WARNING: %s encoder may be disconnected! PWM=%d, Speed=%.1f\n",
+                          motorName, state.currentPWM, measuredSpeed);
+            *stallWarned = true;
+        }
+    } else {
+        // Motor moving normally or stopped - reset stall detection
+        *stallTimer = 0;
+        *stallWarned = false;
+    }
     
     // ===== PID Calculation =====
     float error = state.targetSpeed - measuredSpeed;
     
-    // Integral with anti-windup clamping
+    // Integral with improved anti-windup (50% of max output)
     state.errorSum += error;
-    float maxIntegral = 255.0f / ki;
+    float maxIntegral = 128.0f / ki;  // Limit integral to 50% contribution
     state.errorSum = constrain(state.errorSum, -maxIntegral, maxIntegral);
     
-    // Derivative on error
-    float dErr = error - state.lastError;
+    // CRITICAL FIX #5: Derivative-on-measurement (prevents spike on target change)
+    // Instead of: dErr = error - lastError (spikes when target changes)
+    // Use: dErr = -(measuredSpeed - prevMeasuredSpeed) (smooth, only responds to actual changes)
+    float dMeasurement = measuredSpeed - prevMeasuredSpeed;
     
     // PID terms
     float pTerm = kp * error;
     float iTerm = ki * state.errorSum;
-    float dTerm = kd * dErr;
+    float dTerm = -kd * dMeasurement;  // Negative because we want to resist changes
     
     // Feedforward: Base PWM proportional to target (improves response)
     float feedforward = 0.0f;
@@ -273,9 +330,13 @@ void MotorController::updatePID(PIDState& state, MotorEncoder* encoder, int& pwm
     // Clamp to valid PWM range
     int pwm = constrain((int)output, -255, 255);
     
-    // Dead zone: Apply minimum PWM to overcome static friction
-    if (state.targetSpeed != 0 && abs(pwm) < 30) {
-        pwm = (pwm >= 0) ? 30 : -30;
+    // CRITICAL FIX #2: Dead zone applied based on TARGET DIRECTION, not final PWM
+    // This prevents wrong-direction bug when PID makes small corrections
+    if (state.targetSpeed != 0) {
+        int targetDirection = (state.targetSpeed > 0) ? 1 : -1;
+        if (abs(pwm) < 40) {
+            pwm = targetDirection * 40;  // Apply minimum PWM in correct direction
+        }
     }
     
     // Store state for next iteration

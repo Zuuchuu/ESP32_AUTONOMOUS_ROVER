@@ -9,7 +9,7 @@
 
 ManualControlTask::ManualControlTask() 
     : isManualModeActive(false), isMoving(false), currentSpeed(0),
-      lastCommandTime(0), commandTimeout(10000), updateInterval(100) {
+      lastCommandTime(0), commandTimeout(500), updateInterval(100) {  // 500ms timeout for safety
     currentDirection[0] = '\0';  // Initialize empty string
 }
 
@@ -61,34 +61,51 @@ void ManualControlTask::run() {
              }
         }
 
-        // Check shared data for manual control commands
+        // Get manual control state from shared data - SINGLE READ per iteration
         bool manualActive, manualMoving;
-        char manualDirection[12];
-        int manualSpeed;
+        char direction[20];
+        int speed;
         
-        if (sharedData.getManualControlState(manualActive, manualMoving, manualDirection, sizeof(manualDirection), manualSpeed)) {
-            // Update local state
-            isManualModeActive = manualActive;
-            isMoving = manualMoving;
-            strncpy(currentDirection, manualDirection, sizeof(currentDirection) - 1);
-            currentDirection[sizeof(currentDirection) - 1] = '\0';
-            currentSpeed = manualSpeed;
+        if (sharedData.getManualControlState(manualActive, manualMoving, direction, sizeof(direction), speed)) {
+            // Save previous moving state BEFORE updating
+            bool wasMoving = isMoving;
             
-            // Execute manual commands
-            if (manualActive && manualMoving) {
-                // Check for command timeout
-                if (millis() - lastCommandTime > commandTimeout) {
-                    Serial.println("[ManualControl] Command timeout - stopping movement");
-                    stopMovement();
-                    // Update shared data
-                    sharedData.setManualControlState(true, false, "", 0);
+            // Handle manual mode state changes
+            if (manualActive != isManualModeActive) {
+                isManualModeActive = manualActive;
+                if (manualActive) {
+                    Serial.println("[ManualControl] Manual mode activated");
                 } else {
-                    // Update motor speeds
-                    updateMotors();
+                    Serial.println("[ManualControl] Manual mode deactivated");
+                    if (wasMoving) {
+                        Serial.println("[ManualControl] Stopping motors - manual mode disabled");
+                        stopMovement();
+                    }
                 }
-            } else if (manualActive && !manualMoving) {
-                // Manual mode active but not moving
+            }
+            
+            // Update local state
+            isMoving = manualMoving;
+            strncpy(currentDirection, direction, sizeof(currentDirection) - 1);
+            currentDirection[sizeof(currentDirection) - 1] = '\0';
+            currentSpeed = speed;
+            
+            // SIMPLIFIED LOGIC: Execute based on current state
+            if (manualActive && manualMoving && strlen(direction) > 0 && strcmp(direction, "stop") != 0) {
+                // Active movement command - refresh timeout and execute
+                lastCommandTime = millis();
+                processManualCommand(direction, speed);
+            } else if (wasMoving && !manualMoving) {
+                // Transition from moving to stopped
+                Serial.println("[ManualControl] Stopping movement (command: stop)");
                 stopMovement();
+            }
+            
+            // Timeout check - stop if no command received within timeout period
+            if (isMoving && millis() - lastCommandTime > commandTimeout) {
+                Serial.println("[ManualControl] Command timeout - stopping movement");
+                stopMovement();
+                sharedData.setManualControlState(true, false, "", 0);
             }
         }
         
@@ -180,6 +197,9 @@ void ManualControlTask::processManualCommand(const char* direction, int speed) {
     int leftSpeed = 0;
     int rightSpeed = 0;
     
+    // Inner wheel ratio for curved movement (50% of outer wheel)
+    const float innerRatio = 0.5f;
+    
     if (strcmp(direction, "forward") == 0) {
         leftSpeed = speed;
         rightSpeed = speed;
@@ -187,26 +207,44 @@ void ManualControlTask::processManualCommand(const char* direction, int speed) {
         leftSpeed = -speed;
         rightSpeed = -speed;
     } else if (strcmp(direction, "left") == 0) {
+        // Pivot turn: left wheels backward, right wheels forward
         leftSpeed = -speed;
         rightSpeed = speed;
     } else if (strcmp(direction, "right") == 0) {
+        // Pivot turn: left wheels forward, right wheels backward
         leftSpeed = speed;
         rightSpeed = -speed;
+    } else if (strcmp(direction, "forward_left") == 0) {
+        // Curve left: right wheel (outer) at full speed, left wheel (inner) at 50%
+        leftSpeed = (int)(speed * innerRatio);
+        rightSpeed = speed;
+    } else if (strcmp(direction, "forward_right") == 0) {
+        // Curve right: left wheel (outer) at full speed, right wheel (inner) at 50%
+        leftSpeed = speed;
+        rightSpeed = (int)(speed * innerRatio);
+    } else if (strcmp(direction, "backward_left") == 0) {
+        // Reverse curve left: right wheel (outer) at full reverse, left (inner) at 50%
+        leftSpeed = (int)(-speed * innerRatio);
+        rightSpeed = -speed;
+    } else if (strcmp(direction, "backward_right") == 0) {
+        // Reverse curve right: left wheel (outer) at full reverse, right (inner) at 50%
+        leftSpeed = -speed;
+        rightSpeed = (int)(-speed * innerRatio);
     } else if (strcmp(direction, "stop") == 0) {
-        leftSpeed = 0;
-        rightSpeed = 0;
+        // IMMEDIATE STOP: Bypass PID for instant response
+        motorController.stopMotors();
         isMoving = false;
+        Serial.println("[ManualControl] Motors stopped immediately");
+        return;  // Exit early, don't go through setMotorSpeeds
     }
     
-    // Apply motor speeds
+    // Apply motor speeds (for movement commands only)
     motorController.setMotorSpeeds(leftSpeed, rightSpeed);
     
     Serial.printf("[ManualControl] Motors set - Left: %d, Right: %d\n", leftSpeed, rightSpeed);
 }
 
 void ManualControlTask::stopMovement() {
-    if (!isMoving) return;
-    
     Serial.println("[ManualControl] Stopping movement");
     motorController.stopMotors();
     isMoving = false;
@@ -221,10 +259,12 @@ void ManualControlTask::updateMotors() {
 }
 
 bool ManualControlTask::isCommandValid(const char* direction, int speed) {
-    // Validate direction
+    // Validate direction - support single and combined directions
     if (strcmp(direction, "forward") != 0 && strcmp(direction, "backward") != 0 && 
         strcmp(direction, "left") != 0 && strcmp(direction, "right") != 0 && 
-        strcmp(direction, "stop") != 0) {
+        strcmp(direction, "stop") != 0 &&
+        strcmp(direction, "forward_left") != 0 && strcmp(direction, "forward_right") != 0 &&
+        strcmp(direction, "backward_left") != 0 && strcmp(direction, "backward_right") != 0) {
         return false;
     }
     

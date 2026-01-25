@@ -38,6 +38,9 @@ private:
         int currentPWM;             // Current PWM output for smooth ramping
         unsigned long lastTime;
     } pidLeft, pidRight;
+    
+    // Stop lock - prevents PID from restarting motors after explicit stop
+    bool motorsStopped;
 
     // Private methods
     void setLeftMotorDirection(bool forward);

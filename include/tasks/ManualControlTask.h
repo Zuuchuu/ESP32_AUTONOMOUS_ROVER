@@ -19,7 +19,7 @@ private:
     // Manual control state
     bool isManualModeActive;
     bool isMoving;
-    char currentDirection[12];  // "forward", "backward", "left", "right", "stop"
+    char currentDirection[20];  // "forward", "backward", "left", "right", "stop", "forward_right", etc.
     int currentSpeed;
     
     // Timing and safety

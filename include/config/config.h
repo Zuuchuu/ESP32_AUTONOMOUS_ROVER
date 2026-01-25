@@ -21,7 +21,7 @@
 // Task Stack Sizes (in bytes)
 // Optimized based on function requirements + 512-byte safety margin
 // Monitor with uxTaskGetStackHighWaterMark() to verify
-#define TASK_STACK_SIZE_WIFI      3072  // JSON parsing, TCP buffer
+#define TASK_STACK_SIZE_WIFI      3584  // JSON parsing, TCP buffer
 #define TASK_STACK_SIZE_GPS       2048  // Serial parsing only
 #define TASK_STACK_SIZE_IMU       3072  // I2C + NVS + sensor fusion
 #define TASK_STACK_SIZE_NAVIGATION 3072  // PID + trig calculations
