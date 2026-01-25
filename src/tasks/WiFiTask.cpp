@@ -1,5 +1,6 @@
 #include "tasks/WiFiTask.h"
 #include "tasks/NavigationTask.h"
+#include "tasks/ManualControlTask.h"
 #include "core/SharedData.h"
 #include "hardware/MotorController.h"
 #include "config/config.h"
@@ -432,30 +433,44 @@ void WiFiTask::sendStatus() {
 }
 
 // ============================================================================
-// MANUAL CONTROL COMMAND PROCESSING
+// MANUAL CONTROL COMMAND PROCESSING - Queue-based for low latency
 // ============================================================================
 
 void WiFiTask::processEnableManual() {
-    Serial.println("[WiFi] Enabling manual control mode");
+    Serial.println("[WiFi] Enabling manual control mode via queue");
     
-    // Update shared data
-    if (sharedData.setManualControlState(true, false, "", 0)) {
+    // Send control command via queue for immediate processing
+    ManualCommand cmd = {};
+    cmd.isControlCmd = true;
+    cmd.enableManual = true;
+    cmd.direction[0] = '\0';
+    cmd.speed = 0;
+    
+    QueueHandle_t queue = manualControlTask.getCommandQueue();
+    if (queue && xQueueSend(queue, &cmd, pdMS_TO_TICKS(10)) == pdTRUE) {
         sendResponse("{\"status\":\"success\",\"message\":\"Manual control mode enabled\"}");
-        Serial.println("[WiFi] Manual control mode enabled successfully");
+        Serial.println("[WiFi] Enable command queued successfully");
     } else {
-        sendError("Failed to enable manual control mode");
+        sendError("Failed to queue enable command");
     }
 }
 
 void WiFiTask::processDisableManual() {
-    Serial.println("[WiFi] Disabling manual control mode");
+    Serial.println("[WiFi] Disabling manual control mode via queue");
     
-    // Update shared data
-    if (sharedData.setManualControlState(false, false, "", 0)) {
+    // Send control command via queue for immediate processing
+    ManualCommand cmd = {};
+    cmd.isControlCmd = true;
+    cmd.enableManual = false;
+    cmd.direction[0] = '\0';
+    cmd.speed = 0;
+    
+    QueueHandle_t queue = manualControlTask.getCommandQueue();
+    if (queue && xQueueSend(queue, &cmd, pdMS_TO_TICKS(10)) == pdTRUE) {
         sendResponse("{\"status\":\"success\",\"message\":\"Manual control mode disabled\"}");
-        Serial.println("[WiFi] Manual control mode disabled successfully");
+        Serial.println("[WiFi] Disable command queued successfully");
     } else {
-        sendError("Failed to disable manual control mode");
+        sendError("Failed to queue disable command");
     }
 }
 
@@ -486,19 +501,26 @@ void WiFiTask::processManualMove() {
     
     Serial.printf("[WiFi] Manual move command: %s at speed %d\n", direction.c_str(), speed);
     
-    // IMMEDIATE STOP: Bypass SharedData delay for instant motor stop
+    // IMMEDIATE STOP: Bypass queue for instant motor stop (critical path)
     if (direction == "stop") {
         motorController.stopMotors();
-        Serial.println("[WiFi] Motors stopped immediately");
+        Serial.println("[WiFi] Motors stopped immediately (direct call)");
     }
     
-    // Update shared data with manual control state
-    if (sharedData.setManualControlState(true, (direction != "stop"), direction.c_str(), speed)) {
-        String response = "{\"status\":\"success\",\"message\":\"Manual move command executed: " + direction + " at speed " + String(speed) + "%\"}";
+    // Send movement command via queue for ManualControlTask processing
+    ManualCommand cmd = {};
+    cmd.isControlCmd = false;
+    cmd.enableManual = false;
+    strncpy(cmd.direction, direction.c_str(), sizeof(cmd.direction) - 1);
+    cmd.direction[sizeof(cmd.direction) - 1] = '\0';
+    cmd.speed = speed;
+    
+    QueueHandle_t queue = manualControlTask.getCommandQueue();
+    if (queue && xQueueSend(queue, &cmd, pdMS_TO_TICKS(10)) == pdTRUE) {
+        String response = "{\"status\":\"success\",\"message\":\"Manual move command: " + direction + " at speed " + String(speed) + "%\"}";
         sendResponse(response);
-        Serial.println("[WiFi] Manual move command processed successfully");
     } else {
-        sendError("Failed to process manual move command");
+        sendError("Failed to queue movement command");
     }
 }
 

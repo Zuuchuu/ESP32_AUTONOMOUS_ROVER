@@ -48,7 +48,7 @@ GPSTask gpsTask;
 IMUTask imuTask;
 NavigationTask navigationTask;
 TelemetryTask telemetryTask;
-ManualControlTask manualControlTask;
+
 DisplayTask displayTask;
 TOFTask tofTask;
 EncoderTask encoderTask;
@@ -249,6 +249,12 @@ void createTasks() {
         TASK_CORE_TELEMETRY
     );
     
+    // Initialize manual control task BEFORE creating the task
+    // This ensures queue is created before task starts accessing it
+    if (!manualControlTask.initialize()) {
+        Serial.println("ERROR: Failed to initialize manual control task");
+    }
+
     // Create Manual Control task (higher priority than navigation)
     xTaskCreatePinnedToCore(
         manualControlTaskFunction,
@@ -259,11 +265,6 @@ void createTasks() {
         &manualControlTaskHandle,
         TASK_CORE_NAVIGATION
     );
-    
-    // Initialize manual control task
-    if (!manualControlTask.initialize()) {
-        Serial.println("ERROR: Failed to initialize manual control task");
-    }
     
     // Give the telemetry task time to start and initialize
     vTaskDelay(pdMS_TO_TICKS(1000));

@@ -137,11 +137,11 @@ export function ManualControl({ onMove, onEnable, onDisable }: ManualControlProp
         // Send immediately
         sendCurrentMovement(activeButtons);
 
-        // If there are active buttons, continue sending at 10Hz
+        // If there are active buttons, continue sending at 20Hz (50ms)
         if (activeButtons.size > 0) {
             sendInterval.current = setInterval(() => {
                 sendCurrentMovement(activeButtons);
-            }, 100);
+            }, 50);
         }
     }, [activeButtons, isEnabled, sendCurrentMovement]);
 

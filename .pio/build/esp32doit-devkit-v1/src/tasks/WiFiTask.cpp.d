@@ -201,4 +201,4 @@
  include/core/SharedData.h include/config/config.h \
  include/tasks/NavigationTask.h include/config/pins.h \
  include/hardware/MotorController.h include/hardware/MotorEncoder.h \
- include/config/wifi_config.h
+ include/tasks/ManualControlTask.h include/config/wifi_config.h

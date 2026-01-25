@@ -4,17 +4,27 @@
 #include "config/config.h"
 
 // ============================================================================
+// GLOBAL INSTANCE
+// ============================================================================
+
+ManualControlTask manualControlTask;
+
+// ============================================================================
 // CONSTRUCTOR AND DESTRUCTOR
 // ============================================================================
 
 ManualControlTask::ManualControlTask() 
-    : isManualModeActive(false), isMoving(false), currentSpeed(0),
-      lastCommandTime(0), commandTimeout(500), updateInterval(100) {  // 500ms timeout for safety
+    : commandQueue(nullptr), isManualModeActive(false), isMoving(false), currentSpeed(0),
+      lastCommandTime(0), commandTimeout(150), updateInterval(20) {  // 150ms timeout, 20ms loop
     currentDirection[0] = '\0';  // Initialize empty string
 }
 
 ManualControlTask::~ManualControlTask() {
     stopAllMovement();
+    if (commandQueue) {
+        vQueueDelete(commandQueue);
+        commandQueue = nullptr;
+    }
 }
 
 // ============================================================================
@@ -23,6 +33,14 @@ ManualControlTask::~ManualControlTask() {
 
 bool ManualControlTask::initialize() {
     Serial.println("[ManualControl] Initializing manual control system...");
+    
+    // Create command queue for low-latency communication
+    commandQueue = xQueueCreate(MANUAL_CMD_QUEUE_SIZE, sizeof(ManualCommand));
+    if (commandQueue == nullptr) {
+        Serial.println("[ManualControl] Error: Failed to create command queue");
+        return false;
+    }
+    Serial.println("[ManualControl] Command queue created successfully");
     
     // Global Motor controller already initialized in main, but safe to call
     if (!motorController.initialize()) {
@@ -37,80 +55,94 @@ bool ManualControlTask::initialize() {
     currentSpeed = 0;
     lastCommandTime = 0;
     
-    Serial.println("[ManualControl] Manual control system initialized successfully");
+    Serial.printf("[ManualControl] Initialized with timeout=%lums, interval=%lums\n", 
+                  commandTimeout, updateInterval);
     return true;
 }
 
 // ============================================================================
-// MAIN MANUAL CONTROL LOOP
+// MAIN MANUAL CONTROL LOOP - Queue-based event-driven processing
 // ============================================================================
 
 void ManualControlTask::run() {
+    ManualCommand cmd;
+    
+    Serial.println("[ManualControl] Entering event-driven loop (queue-based)");
+    
     while (true) {
-        // Safety Check (TOF from SharedData)
+        // Block on queue with short timeout for responsiveness
+        // This is the KEY change: we wait for commands instead of polling SharedData
+        BaseType_t received = xQueueReceive(commandQueue, &cmd, pdMS_TO_TICKS(updateInterval));
+        
+        // Safety Check (TOF from SharedData) - runs every loop iteration
         RoverState currentState;
         if (sharedData.getRoverState(currentState)) {
-             float dist = currentState.frontObstacleDistance;
-             bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
-             
-             if (obstacleDetected) {
-                 if (isMoving && strcmp(currentDirection, "forward") == 0) {
-                     Serial.println("[ManualControl] PROXIMITY ALERT! Stopping.");
-                     stopAllMovement();
-                 }
-             }
-        }
-
-        // Get manual control state from shared data - SINGLE READ per iteration
-        bool manualActive, manualMoving;
-        char direction[20];
-        int speed;
-        
-        if (sharedData.getManualControlState(manualActive, manualMoving, direction, sizeof(direction), speed)) {
-            // Save previous moving state BEFORE updating
-            bool wasMoving = isMoving;
+            float dist = currentState.frontObstacleDistance;
+            bool obstacleDetected = (dist > 0 && dist < 5.0); // 5cm threshold
             
-            // Handle manual mode state changes
-            if (manualActive != isManualModeActive) {
-                isManualModeActive = manualActive;
-                if (manualActive) {
-                    Serial.println("[ManualControl] Manual mode activated");
-                } else {
-                    Serial.println("[ManualControl] Manual mode deactivated");
-                    if (wasMoving) {
-                        Serial.println("[ManualControl] Stopping motors - manual mode disabled");
-                        stopMovement();
-                    }
+            if (obstacleDetected) {
+                if (isMoving && strcmp(currentDirection, "forward") == 0) {
+                    Serial.println("[ManualControl] PROXIMITY ALERT! Stopping.");
+                    stopAllMovement();
+                    continue;  // Skip command processing this iteration
                 }
             }
+        }
+        
+        // Process command if received from queue
+        if (received == pdTRUE) {
+            lastCommandTime = millis();  // Refresh timeout on any command
             
-            // Update local state
-            isMoving = manualMoving;
-            strncpy(currentDirection, direction, sizeof(currentDirection) - 1);
-            currentDirection[sizeof(currentDirection) - 1] = '\0';
-            currentSpeed = speed;
-            
-            // SIMPLIFIED LOGIC: Execute based on current state
-            if (manualActive && manualMoving && strlen(direction) > 0 && strcmp(direction, "stop") != 0) {
-                // Active movement command - refresh timeout and execute
-                lastCommandTime = millis();
-                processManualCommand(direction, speed);
-            } else if (wasMoving && !manualMoving) {
-                // Transition from moving to stopped
-                Serial.println("[ManualControl] Stopping movement (command: stop)");
-                stopMovement();
+            // Handle control commands (enable/disable manual mode)
+            if (cmd.isControlCmd) {
+                if (cmd.enableManual) {
+                    if (!isManualModeActive) {
+                        isManualModeActive = true;
+                        Serial.println("[ManualControl] Manual mode ENABLED via queue");
+                    }
+                } else {
+                    if (isManualModeActive) {
+                        isManualModeActive = false;
+                        if (isMoving) {
+                            Serial.println("[ManualControl] Stopping motors - manual mode disabled");
+                            stopMovement();
+                        }
+                        Serial.println("[ManualControl] Manual mode DISABLED via queue");
+                    }
+                }
+                // Update SharedData for status queries (not for command flow)
+                sharedData.setManualControlState(isManualModeActive, isMoving, currentDirection, currentSpeed);
+                continue;
             }
             
-            // Timeout check - stop if no command received within timeout period
-            if (isMoving && millis() - lastCommandTime > commandTimeout) {
-                Serial.println("[ManualControl] Command timeout - stopping movement");
-                stopMovement();
-                sharedData.setManualControlState(true, false, "", 0);
+            // Handle movement commands
+            if (isManualModeActive) {
+                if (strcmp(cmd.direction, "stop") == 0) {
+                    // IMMEDIATE STOP - highest priority
+                    if (isMoving) {
+                        Serial.println("[ManualControl] STOP command via queue - immediate");
+                        stopMovement();
+                    }
+                } else if (strlen(cmd.direction) > 0 && cmd.speed > 0) {
+                    // Movement command
+                    isMoving = true;
+                    strncpy(currentDirection, cmd.direction, sizeof(currentDirection) - 1);
+                    currentDirection[sizeof(currentDirection) - 1] = '\0';
+                    currentSpeed = cmd.speed;
+                    processManualCommand(cmd.direction, cmd.speed);
+                }
+                // Update SharedData for status queries
+                sharedData.setManualControlState(isManualModeActive, isMoving, currentDirection, currentSpeed);
             }
         }
         
-        // Update at specified interval
-        vTaskDelay(pdMS_TO_TICKS(updateInterval));
+        // Timeout check - stop if no command received within timeout period
+        // This is a SAFETY fallback - normally stop commands arrive explicitly
+        if (isMoving && (millis() - lastCommandTime > commandTimeout)) {
+            Serial.printf("[ManualControl] Command timeout (%lums) - stopping movement\n", commandTimeout);
+            stopMovement();
+            sharedData.setManualControlState(isManualModeActive, false, "", 0);
+        }
     }
 }
 
